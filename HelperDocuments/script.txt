@@ -1,0 +1,2 @@
+wsl --install
+cd /mnt/c/Users/Hp/Documents/LeakGAN/
