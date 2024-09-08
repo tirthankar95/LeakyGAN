@@ -14,10 +14,9 @@ from torch.autograd import Variable
 from torch.nn.utils import clip_grad_norm_
 
 from data_iter import real_data_loader, dis_data_loader
-from utils import recurrent_func, loss_func, get_sample, get_rewards
+from utils import recurrent_func, loss_func, get_sample, get_rewards, get_arguments
 from Discriminator import Discriminator
 from Generator import Generator
-from target_lstm import TargetLSTM
 
 #Arguments
 parser = argparse.ArgumentParser(description="LeakGAN")
@@ -91,26 +90,6 @@ d_step_size = 5
 d_dropout_prob = 0.2
 d_l2_reg_lambda = 0.2
 
-def get_params(filePath):
-    with open(filePath, 'r') as f:
-        params = json.load(f)
-    f.close()
-    return params
-
-def get_arguments():
-    train_params = get_params("./params/train_params.json")
-    leak_gan_params = get_params("./params/leak_gan_params.json")
-    target_params = get_params("./params/target_params.json")
-    dis_data_params = get_params("./params/dis_data_params.json")
-    real_data_params = get_params("./params/real_data_params.json")
-    return {
-        "train_params": train_params,
-        "leak_gan_params": leak_gan_params,
-        "target_params": target_params,
-        "dis_data_params": dis_data_params,
-        "real_data_params" : real_data_params
-    }
-
 #List of models
 def prepare_model_dict(use_cuda=False):
     f = open("./params/leak_gan_params.json")
@@ -168,7 +147,9 @@ def prepare_scheduler_dict(optmizer_dict, step_size=200, gamma=0.99):
             "discriminator": d_scheduler}
 
 #Pretraining the Generator
-def pretrain_generator(model_dict, optimizer_dict, scheduler_dict, dataloader, vocab_size, max_norm=5.0, use_cuda=False, epoch=1, tot_epochs=100):
+def pretrain_generator(model_dict, optimizer_dict, scheduler_dict, dataloader, \
+                       vocab_size, max_norm=5.0, use_cuda=False, epoch=1, \
+                       tot_epochs=100):
     #get the models of generator
     generator = model_dict["generator"]
     worker = generator.worker
@@ -196,8 +177,7 @@ def pretrain_generator(model_dict, optimizer_dict, scheduler_dict, dataloader, v
             sample = sample.cuda(non_blocking = True)
         
         # Calculate pretrain loss
-        if (sample.size() == torch.zeros([64, 20]).size()): #sometimes smaller than 64 (16) is passed, so this if statement disables it
-            #print("Sample size: {}".format(sample.size()))
+        if (sample.size() == torch.Size([64, 20])): #sometimes smaller than 64 (16) is passed, so this if statement disables it
             pre_rets = recurrent_func("pre")(model_dict, sample, use_cuda)
             real_goal = pre_rets["real_goal"]
             prediction = pre_rets["prediction"]
@@ -246,14 +226,12 @@ def pretrain_discriminator(model_dict, optimizer_dict, scheduler_dict,
                            dis_dataloader_params, vocab_size, positive_file,
                            negative_file, batch_size, epochs, use_cuda=False, temperature=1.0):
     discriminator = model_dict["discriminator"]
-
     d_optimizer = optimizer_dict["discriminator"]
     d_lr_scheduler = scheduler_dict["discriminator"]
 
     generate_samples(model_dict, negative_file, batch_size, use_cuda, temperature)
     dis_dataloader_params["positive_filepath"] = positive_file
     dis_dataloader_params["negative_filepath"] = negative_file
-    #print(dis_dataloader_params)
     dataloader = dis_data_loader(**dis_dataloader_params) #this is where data iterator is used
 
     cross_entropy = nn.CrossEntropyLoss() #this one is similar to NLL (negative log likelihood)
@@ -391,7 +369,6 @@ def adversarial_train(model_dict, optimizer_dict, scheduler_dict, dis_dataloader
     scheduler_dict["disciminator"] = d_lr_scheduler
 
     return model_dict, optimizer_dict, scheduler_dict
-
 
 def save_checkpoint(model_dict, optimizer_dict, scheduler_dict, ckpt_num, replace=False):
     file_name = "checkpoint" + str(ckpt_num) + ".pth.tar"

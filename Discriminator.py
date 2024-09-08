@@ -26,6 +26,7 @@ class Highway(nn.Module):
         t = torch.sigmoid(self.fc2)
         out = g*t + (1. - t)*x
         return out
+    
 class Discriminator(nn.Module):
     """
     A CNN for text classification
@@ -84,14 +85,13 @@ class Discriminator(nn.Module):
         convs = [F.relu(conv(emb)).squeeze(3) for conv in self.convs] # [batch_size * num_filter * seq_len]
         pooled_out = [F.max_pool1d(conv, conv.size(2)).squeeze(2) for conv in convs] # [batch_size * num_filter]
         pred = torch.cat(pooled_out, 1) # batch_size * sum(num_filters)
-        #print("Pred size: {}".format(pred.size()))
         highway = self.highway(pred)
-        #print("highway size: {}".format(highway.size()))
         highway = torch.sigmoid(highway)* F.relu(highway) + (1.0 - torch.sigmoid(highway))*pred
         features = self.dropout(highway)
         score = self.fc(features)
         pred = F.log_softmax(score, dim=1) #batch * num_classes
         return {"pred":pred, "feature":features, "score": score}
+    
     def l2_loss(self):
         W = self.fc.weight
         b = self.fc.bias

@@ -1,6 +1,6 @@
 {
-	"positive_filepath":"./data/train_corpus.npy",
-	"negative_filepath":"./data/gen_corpus.npy",
+	"positive_filepath":"./formatted_data/positive_corpus.npy",
+	"negative_filepath":"./formatted_data/negative_corpus.npy",
     "batch_size":64,
     "shuffle":true,
     "num_workers":4,
