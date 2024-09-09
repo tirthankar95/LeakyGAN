@@ -8,7 +8,8 @@ from utils import get_arguments
 punctuations = [',', '.', '?', ';', '!', "\"", "\'" "*"]
 
 def create_frmt_data(filePath, pf):
-    df = pd.read_csv(f"{filePath}")
+    param_dict = get_arguments()
+    df = pd.read_csv(f"{filePath}", encoding = "latin")
     total_sentence = []
     for idx, text in enumerate(df["Questions"]):
         text_arr = text.split()
@@ -26,6 +27,7 @@ def create_frmt_data(filePath, pf):
         df.loc[idx, "Questions"] = " ".join(new_text_arr)
         total_sentence.extend(new_text_arr)
     vocab, rev_vocab = create_vocab(" ".join(total_sentence), "./formatted_data/")
+    print(f'[TM] vocab size: {len(vocab)}')
     positive, negative = [], []
     seq_length = param_dict["leak_gan_params"]\
                            ["discriminator_params"]\
@@ -41,6 +43,5 @@ def create_frmt_data(filePath, pf):
     np.save(f"{pf}", positive)
 
 if __name__ == "__main__":
-    param_dict = get_arguments()
     create_frmt_data("./rawdata_datagencode/physics.csv",\
                      "./formatted_data/positive_corpus.npy")
