@@ -56,47 +56,14 @@ parser.add_argument("--no_cuda", action="store_true", default=False,
 parser.add_argument("--seed", type=int, default=1, metavar="S",
                     help="Random seed (defaul: 1)")
 
-#Files
-POSITIVE_FILE = "real.data"
-NEGATIVE_FILE = "gene.data"
-
-# Genrator Parameters
-g_embed_dim = 32
-g_hidden_dim = 32
-g_seq_len = 20
-#   MANAGER:
-g_m_batch_size = 64
-g_m_hidden_dim = 32
-g_m_goal_out_size = 0
-#   WORKER:
-g_w_batch_size = 64
-g_w_vocab_size = 5258
-g_w_embed_dim = 32
-g_w_hidden_dim = 32
-g_w_goal_out_size = 0
-g_w_goal_size = 16
-
-g_step_size = 5
-# Discriminator Parameters
-d_seq_len = 20
-d_num_classes = 2
-d_vocab_size = 5258
-d_dis_emb_dim = 64
-d_filter_sizes = [1,2,3,4,5,6,7,8,9,10,15,20],
-d_num_filters = [100,200,200,200,200,100,100,100,100,100,160,160],
-d_start_token = 0
-d_goal_out_size = 0
-d_step_size = 5
-d_dropout_prob = 0.2
-d_l2_reg_lambda = 0.2
+# Global param value.
+param_dict = None 
 
 #List of models
 def prepare_model_dict(use_cuda=False):
-    f = open("./params/leak_gan_params.json")
-    params = json.load(f)
-    f.close()
-    discriminator_params = params["discriminator_params"]
-    generator_params = params["generator_params"]
+    param = param_dict["leak_gan_params"]
+    discriminator_params = param["discriminator_params"]
+    generator_params = param["generator_params"]
     worker_params = generator_params["worker_params"]
     manager_params = generator_params["manager_params"]
     discriminator_params["goal_out_size"] = sum(
@@ -168,16 +135,16 @@ def pretrain_generator(model_dict, optimizer_dict, scheduler_dict, dataloader, \
     """
     
     for i, sample in enumerate(dataloader):
-        #print("DataLoader: {}".format(dataloader))
-        m_lr_scheduler.step()
-        w_lr_scheduler.step()
-
         sample = Variable(sample)
         if use_cuda:
             sample = sample.cuda(non_blocking = True)
         
         # Calculate pretrain loss
-        if (sample.size() == torch.Size([64, 20])): #sometimes smaller than 64 (16) is passed, so this if statement disables it
+        param = param_dict["leak_gan_params"]
+        batch_size, seq_length = param["generator_params"]["manager_params"]["batch_size"],\
+                                 param["discriminator_params"]["seq_len"]
+        if (sample.size() == torch.Size([batch_size, seq_length])): #sometimes smaller than 64 (16) is passed, so this if statement disables it
+            w_optimizer.zero_grad()
             pre_rets = recurrent_func("pre")(model_dict, sample, use_cuda)
             real_goal = pre_rets["real_goal"]
             prediction = pre_rets["prediction"]
@@ -193,7 +160,8 @@ def pretrain_generator(model_dict, optimizer_dict, scheduler_dict, dataloader, \
             torch.autograd.grad(w_loss, worker.parameters())
             clip_grad_norm_(worker.parameters(), max_norm=max_norm)
             w_optimizer.step()
-            w_optimizer.zero_grad()
+            m_lr_scheduler.step()
+            w_lr_scheduler.step()
             if i == 63:
                 print("Pre-Manager Loss: {:.5f}, Pre-Worker Loss: {:.5f}\n".format(m_loss, w_loss))
     """
@@ -249,11 +217,11 @@ def pretrain_discriminator(model_dict, optimizer_dict, scheduler_dict,
                 label = label.cuda()
             outs = discriminator(data)
             loss = cross_entropy(outs["score"], label.view(-1)) + discriminator.l2_loss()
-            d_lr_scheduler.step()
             loss.backward()
             d_optimizer.step()
             if i == 63:
                 print("Pre-Discriminator loss: {:.5f}".format(loss))
+        d_lr_scheduler.step()
     
     model_dict["discriminator"] = discriminator
     optimizer_dict["discriminator"] = d_optimizer
@@ -277,23 +245,15 @@ def adversarial_train(model_dict, optimizer_dict, scheduler_dict, dis_dataloader
     w_optimizer = optimizer_dict["worker"]
     d_optimizer = optimizer_dict["discriminator"]
 
-    #Why zero grad only m and w?
-    m_optimizer.zero_grad()
-    w_optimizer.zero_grad()
-
     m_lr_scheduler = scheduler_dict["manager"]
     w_lr_scheduler = scheduler_dict["worker"]
     d_lr_scheduler = scheduler_dict["discriminator"]
-
-    #Adversarial training for generator
+    
+    # Adversarial training for generator
     for _ in range(gen_train_num):
-        m_lr_scheduler.step()
-        w_lr_scheduler.step()
-
         m_optimizer.zero_grad()
         w_optimizer.zero_grad()
-
-        #get all the return values
+        # get all the return values
         adv_rets = recurrent_func("adv")(model_dict, use_cuda)
         real_goal = adv_rets["real_goal"]
         all_goal = adv_rets["all_goal"]
@@ -301,18 +261,20 @@ def adversarial_train(model_dict, optimizer_dict, scheduler_dict, dis_dataloader
         delta_feature = adv_rets["delta_feature"]
         delta_feature_for_worker = adv_rets["delta_feature_for_worker"]
         gen_token = adv_rets["gen_token"]
-
         rewards = get_rewards(model_dict, gen_token, rollout_num, use_cuda)
+        
         m_loss = loss_func("adv_manager")(rewards, real_goal, delta_feature)
         w_loss = loss_func("adv_worker")(all_goal, delta_feature_for_worker, gen_token, prediction, vocab_size, use_cuda)
 
-        torch.autograd.grad(m_loss, manager.parameters()) #based on loss improve the parameters
+        torch.autograd.grad(m_loss, manager.parameters()) 
         torch.autograd.grad(w_loss, worker.parameters())
         clip_grad_norm_(manager.parameters(), max_norm)
         clip_grad_norm_(worker.parameters(), max_norm)
         m_optimizer.step()
         w_optimizer.step()
         print("Adv-Manager loss: {:.5f} Adv-Worker loss: {:.5f}".format(m_loss, w_loss))
+    m_lr_scheduler.step()
+    w_lr_scheduler.step()
     
     del adv_rets
     del real_goal
@@ -322,8 +284,8 @@ def adversarial_train(model_dict, optimizer_dict, scheduler_dict, dis_dataloader
     del delta_feature_for_worker
     del gen_token
     del rewards
-
-    #Adversarial training for discriminator
+    
+    # Adversarial training for discriminator
     for n in range(dis_train_epoch):
         generate_samples(model_dict, neg_file, batch_size, use_cuda, temperature)
         dis_dataloader_params["positive_filepath"] = pos_file
@@ -341,6 +303,7 @@ def adversarial_train(model_dict, optimizer_dict, scheduler_dict, dis_dataloader
         """
         for _ in range(dis_train_num): 
             for i, sample in enumerate(dataloader):
+                d_optimizer.zero_grad()
                 data, label = sample["data"], sample["label"]
                 data = Variable(data)
                 label = Variable(label)
@@ -349,12 +312,11 @@ def adversarial_train(model_dict, optimizer_dict, scheduler_dict, dis_dataloader
                     label = label.cuda(non_blocking=True)
                 outs = discriminator(data)
                 loss = cross_entropy(outs["score"], label.view(-1)) + discriminator.l2_loss()
-                d_optimizer.zero_grad()
-                d_lr_scheduler.step()
                 loss.backward()
                 d_optimizer.step()
+            d_lr_scheduler.step()
         print("{}/{} Adv-Discriminator Loss: {:.5f}".format(n, range(dis_train_epoch),loss))
-    #Save all changes
+    # Save all changes
     model_dict["discriminator"] = discriminator
     generator.worker = worker
     generator.manager = manager
@@ -387,6 +349,7 @@ def main():
     """
     Get all parameters
     """
+    global param_dict
     param_dict = get_arguments()
     use_cuda = torch.cuda.is_available()
     #Random seed
@@ -449,12 +412,12 @@ def main():
     for epoch in range(param_dict["train_params"]["total_epoch"]):
         print("Epoch: {}/{}  Adv".format(epoch, param_dict["train_params"]["total_epoch"]))
         model_dict, optimizer_dict, scheduler_dict = adversarial_train(model_dict, optimizer_dict, scheduler_dict, dis_data_params, vocab_size=vocab_size, pos_file=pos_file, neg_file=neg_file, batch_size=batch_size, use_cuda=use_cuda, epoch=epoch, tot_epoch=param_dict["train_params"]["total_epoch"])
-        if (epoch + 1) % save_num == 0:
+        if epoch % save_num == 0:
             ckpt_num += 1
             if ckpt_num % replace_num == 0:
                 save_checkpoint(model_dict, optimizer_dict, scheduler_dict, ckpt_num, replace=True)
             else:
-               save_checkpoint(model_dict, optimizer_dict, scheduler_dict, ckpt_num)
+                save_checkpoint(model_dict, optimizer_dict, scheduler_dict, ckpt_num)
 
 if __name__ == "__main__":
     main()

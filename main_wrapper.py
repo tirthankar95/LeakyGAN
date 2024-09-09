@@ -29,7 +29,7 @@ def restore_checkpoint(filename):
     checkpoint = torch.load(MODEL_PATH + filename, weights_only = False)
     return checkpoint
 
-model = restore_checkpoint("checkpoint0.pth.tar")["model_dict"]
+model = restore_checkpoint("checkpoint2.pth.tar")["model_dict"]
 gen_tokens = recurrent_func("gen")(model)
 
 def get_sentence(gen_tokens):

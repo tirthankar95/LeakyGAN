@@ -1,3 +1,8 @@
+## Errors to be fixed.
+If the seq length is not a multiple of step_size there is a mismatch.
+`main.py:266`
+`print(rewards.shape, real_goal.shape, delta_feature.shape)`
+
 # LeakGAN-PyTorch
 A simple implementation of LeakGAN in PyTorch described in [Long Text Generation via Adversarial Training with Leaked Information](https://arxiv.org/abs/1709.08624). 
 

@@ -32,10 +32,8 @@ class Dis_Dataset(Dataset):
 
 def real_data_loader(filepath, batch_size, shuffle, num_workers, pin_memory):
     dataset = Real_Dataset(filepath)
-    return DataLoader(dataset, batch_size, shuffle, \
-                      num_workers, pin_memory)
+    return DataLoader(dataset, num_workers = num_workers, pin_memory = pin_memory)
 
 def dis_data_loader(positive_filepath, negative_filepath, batch_size, shuffle, num_workers, pin_memory):
     dataset = Dis_Dataset(positive_filepath, negative_filepath)
-    return DataLoader(dataset, batch_size, shuffle, \
-                      num_workers, pin_memory)
+    return DataLoader(dataset, num_workers = num_workers, pin_memory = pin_memory)

@@ -7,7 +7,7 @@ from utils import get_arguments
 
 punctuations = [',', '.', '?', ';', '!', "\"", "\'" "*"]
 
-def create_frmt_data(filePath, pf, nf):
+def create_frmt_data(filePath, pf):
     df = pd.read_csv(f"{filePath}")
     total_sentence = []
     for idx, text in enumerate(df["Questions"]):
@@ -27,23 +27,20 @@ def create_frmt_data(filePath, pf, nf):
         total_sentence.extend(new_text_arr)
     vocab, rev_vocab = create_vocab(" ".join(total_sentence), "./formatted_data/")
     positive, negative = [], []
+    seq_length = param_dict["leak_gan_params"]\
+                           ["discriminator_params"]\
+                           ["seq_len"]
     for idx, text in enumerate(df["Questions"]):
         temp = []
         for word in text.split():
              temp.append(vocab[word])
         # PADDING & TRUNCATION
-        seq_length = param_dict["model_params"]\
-                               ["discriminator_params"]\
-                               ["seq_len"]
         temp = temp + [len(vocab)-1] * (seq_length - len(temp)) \
                if seq_length > len(temp) else temp[:seq_length] 
-        if df.loc[idx, "Valid"]: positive.append(temp)
-        else: negative.append(temp)
+        positive.append(temp)
     np.save(f"{pf}", positive)
-    np.save(f"{nf}", negative)
 
 if __name__ == "__main__":
     param_dict = get_arguments()
-    create_frmt_data("./raw_data_datagencode/physics.csv",\
-                     "./formatted_data/positive_corpus.npy",\
-                     "./formatted_data/negative_corpus.npy")
+    create_frmt_data("./rawdata_datagencode/physics.csv",\
+                     "./formatted_data/positive_corpus.npy")

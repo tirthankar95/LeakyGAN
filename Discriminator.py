@@ -89,7 +89,7 @@ class Discriminator(nn.Module):
         highway = torch.sigmoid(highway)* F.relu(highway) + (1.0 - torch.sigmoid(highway))*pred
         features = self.dropout(highway)
         score = self.fc(features)
-        pred = F.log_softmax(score, dim=1) #batch * num_classes
+        pred = F.log_softmax(score, dim=1) # batch * num_classes
         return {"pred":pred, "feature":features, "score": score}
     
     def l2_loss(self):
