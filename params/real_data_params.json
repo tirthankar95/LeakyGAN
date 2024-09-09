@@ -1,6 +1,6 @@
 {
     "filepath":"./formatted_data/positive_corpus.npy",
-    "batch_size":1,
+    "batch_size":64,
     "shuffle":true,
     "num_workers":4,
     "pin_memory":false
