@@ -230,7 +230,7 @@ def recurrent_func(f_type = "pre"):
             step_size = generator.step_size
             goal_out_size = generator.worker.goal_out_size
             vocab_size = discriminator.vocab_size
-            #Use input_x to perform G forward step
+            # Use input_x to perform G forward step
             while t < given_num +1:
                 #Extract f_t
                 if t == 0: 
@@ -346,7 +346,7 @@ def get_rewards(model_dict, input_x, rollout_num, use_cuda=False, temperature=1.
         while given_num < seq_len:
             sample_for_reward = rollout_func(model_dict, input_x, given_num, use_cuda, temperature)
             pred = discriminator(sample_for_reward)["pred"]
-            pred = pred[:, 1].data
+            pred = pred[:, 1].data # Class 1 score, how much discriminator is fooled by generator samples.
             if use_cuda:
                 pred = pred.cpu()
             pred = pred.numpy()

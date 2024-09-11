@@ -342,7 +342,7 @@ def save_checkpoint(model_dict, optimizer_dict, scheduler_dict, ckpt_num, replac
         os.remove(oldest_ckpt)
 
 def restore_checkpoint(ckpt_path):
-    checkpoint = torch.load(ckpt_path)
+    checkpoint = torch.load(ckpt_path, weights_only = False)
     return checkpoint
 
 def main():
@@ -357,6 +357,7 @@ def main():
     #Pretrain step
     checkpoint_path = param_dict["train_params"]["checkpoint_path"]
     if checkpoint_path is not None:
+        print('[TM] Loaded from checkpoint.')
         checkpoint = restore_checkpoint(checkpoint_path)
         model_dict = checkpoint["model_dict"]
         optimizer_dict = checkpoint["optimizer_dict"]

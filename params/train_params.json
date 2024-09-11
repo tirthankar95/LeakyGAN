@@ -12,5 +12,5 @@
     "neg_filepath":"./formatted_data/negative_corpus.npy",
     "model_path":"./ckpts/",
     "seed":233,
-    "checkpoint_path":null
+    "checkpoint_path":"./saved_models/checkpoint2.pth.tar"
 }
