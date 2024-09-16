@@ -1,9 +1,8 @@
 import pandas as pd
-from encode_decode import create_vocab
 import numpy as np 
-import sys 
-sys.path.append("./")
-from utils import get_arguments
+
+from datagencode.encode_decode import add_to_vocab
+from model.utils import get_arguments
 
 punctuations = [',', '.', '?', ';', '!', "\"", "\'" "*"]
 
@@ -26,7 +25,7 @@ def create_frmt_data(filePath, pf):
         # New sentence to be added.
         df.loc[idx, "Questions"] = " ".join(new_text_arr)
         total_sentence.extend(new_text_arr)
-    vocab, rev_vocab = create_vocab(" ".join(total_sentence), "./formatted_data/")
+    vocab, rev_vocab = add_to_vocab(" ".join(total_sentence), "./formatted_data/")
     print(f'[TM] vocab size: {len(vocab)}')
     positive, negative = [], []
     seq_length = param_dict["leak_gan_params"]\
@@ -41,7 +40,3 @@ def create_frmt_data(filePath, pf):
                if seq_length > len(temp) else temp[:seq_length] 
         positive.append(temp)
     np.save(f"{pf}", positive)
-
-if __name__ == "__main__":
-    create_frmt_data("./rawdata_datagencode/physics.csv",\
-                     "./formatted_data/positive_corpus.npy")
