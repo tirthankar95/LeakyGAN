@@ -1,4 +1,5 @@
 import numpy as np
+import traceback
 import pickle
 
 def add_to_vocab(corpus, filePath):
@@ -8,10 +9,12 @@ def add_to_vocab(corpus, filePath):
     '''
     vocab, reverse_vocab = {}, []
     try:
-        with open(filePath, "rb") as f:
+        with open(f"{filePath}/tokens.pkl", "rb") as f:
             vocab = pickle.load(f)
         reverse_vocab = np.load(f"{filePath}/rvocab.npy")
-    except: print(f'[TM] first creation of files.')
+    except Exception as e: 
+        traceback.print_exc()
+        print(f'{e}.\n[TM] first creation of files.')
     new_words = ["<R>"] + list(set(corpus.strip().split()))
     indx = len(vocab)
     for word in new_words:
@@ -19,9 +22,9 @@ def add_to_vocab(corpus, filePath):
             vocab[word] = indx 
             reverse_vocab.append(word)
             indx += 1
-    np.save(f"{filePath}/rvocab.npy", vocab)
+    np.save(f"{filePath}/rvocab.npy", reverse_vocab)
     with open(f"{filePath}/tokens.pkl", "wb") as f:
-        pickle.dump(reverse_vocab, f)
+        pickle.dump(vocab, f)
     return vocab, reverse_vocab
 
 def tensor_to_text(input_x, filepath, sen_len = 15):

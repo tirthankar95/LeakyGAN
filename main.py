@@ -24,16 +24,18 @@ if __name__ == '__main__':
         print(f'tbd... coming soon.')
     elif args.option == "datagen":
         '''
-        I/P: csv files with only Question Column.
-        O/P:
-            1. Expand vocab using the new corpus.
-            2. Put data in positive_corpus.
+            I/P: csv files with only Question Column.
+            O/P:
+                1. Expand vocab using the new corpus.
+                2. Put data in positive_corpus.
         '''
         create_frmt_data("./raw_data/physics.csv",\
                          "./formatted_data/positive_corpus.npy")
+    # train generator-discriminator on generated data.
     elif args.option == "train":
-        train() # train generator-discriminator on generated data.
+        train() 
+    # generate sentence after model is trained.
     elif args.option == "generate":
-        get_sentence() # generate sentence after model is trained.
+        get_sentence() 
     else:
         print(f'Bad option. Check --help.')
