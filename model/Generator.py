@@ -107,3 +107,8 @@ class Generator(nn.Module):
         x_tp1 = Categorical(probs).sample()
         return x_tp1, h_m_tp1, c_m_tp1, h_w_tp1, c_w_tp1,\
                last_goal_temp, real_goal, sub_goal, probs, t + 1
+    
+    def get_model_wts(self, is_trainable = True):
+        if is_trainable:
+            return sum([p.numel() for p in self.parameters() if p.requires_grad == True ])
+        return sum([p.numel() for p in self.parameters()])

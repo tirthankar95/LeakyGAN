@@ -92,6 +92,11 @@ class Discriminator(nn.Module):
         pred = F.log_softmax(score, dim=1) # batch * num_classes
         return {"pred":pred, "feature":features, "score": score}
     
+    def get_model_wts(self, is_trainable = True):
+        if is_trainable:
+            return sum([p.numel() for p in self.parameters() if p.requires_grad == True ])
+        return sum([p.numel() for p in self.parameters()])
+    
     def l2_loss(self):
         W = self.fc.weight
         b = self.fc.bias

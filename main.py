@@ -12,7 +12,7 @@ def get_sentence():
     except: return
     gen_tokens = recurrent_func("gen")(model)
     for token in gen_tokens:
-        print(tensor_to_text(token, "./formatted_data/tokens.pkl"))
+        print(tensor_to_text(token, "./formatted_data/"))
         print(f'------------------\n')
 
 
@@ -29,7 +29,7 @@ if __name__ == '__main__':
                 1. Expand vocab using the new corpus.
                 2. Put data in positive_corpus.
         '''
-        create_frmt_data("./raw_data/physics.csv",\
+        create_frmt_data("./raw_data/small_dataset.csv",\
                          "./formatted_data/positive_corpus.npy")
     # train generator-discriminator on generated data.
     elif args.option == "train":

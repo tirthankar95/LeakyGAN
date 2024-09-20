@@ -28,14 +28,13 @@ def add_to_vocab(corpus, filePath):
     return vocab, reverse_vocab
 
 def tensor_to_text(input_x, filepath, sen_len = 15):
-    with open(filepath, "rb") as f:
-        vocab = pickle.load(f)
+    reverse_vocab = np.load(f"{filepath}/rvocab.npy")
     # For aligning.
     text = [""] 
     for index, x in enumerate(input_x):
         if (index+1) % sen_len == 0:
             text.append("\n")
-        text.append(vocab[0] if x not in vocab else vocab[x]) 
+        text.append(reverse_vocab[0] if x >= len(reverse_vocab) else reverse_vocab[x]) 
     # More efficient than functools's reduce, memory is allocated once.
     text_ = " ".join(text) 
     return text_

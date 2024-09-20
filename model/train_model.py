@@ -227,7 +227,7 @@ def adversarial_train(model_dict, optimizer_dict, scheduler_dict, dis_dataloader
         m_loss = loss_func("adv_manager")(rewards, real_goal, delta_feature)
         w_loss = loss_func("adv_worker")(all_goal, delta_feature_for_worker, gen_token, prediction, vocab_size, use_cuda)
 
-        torch.autograd.grad(m_loss, manager.parameters()) 
+        torch.autograd.grad(m_loss, manager.parameters(), allow_unused = True) 
         torch.autograd.grad(w_loss, worker.parameters())
         clip_grad_norm_(manager.parameters(), max_norm)
         clip_grad_norm_(worker.parameters(), max_norm)
@@ -335,7 +335,8 @@ def train():
         ckpt_num = checkpoint["ckpt_num"]
     #Pretrain discriminator
     print ("#########################################################################")
-    print ("Start Pretraining Discriminator...")
+    discriminator = model_dict["discriminator"]
+    print (f"Start Pretraining Discriminator... Model Size: {discriminator.get_model_wts()}")
     with open("./params/dis_data_params.json", 'r') as f:
         dis_data_params = json.load(f)
     if use_cuda:
@@ -353,7 +354,8 @@ def train():
 
     #Pretrain generator 
     print ("#########################################################################")
-    print ("Start Pretraining Generator...")
+    generator = model_dict["generator"]
+    print (f"Start Pretraining Generator... Model Size: {generator.get_model_wts()}")
     real_data_params = param_dict["real_data_params"]
     if use_cuda:
         real_data_params["pin_memory"] = True
