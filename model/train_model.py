@@ -11,6 +11,7 @@ import torch.optim as optim
 import torch.backends.cudnn as cudnn
 from torch.autograd import Variable
 from torch.nn.utils import clip_grad_norm_
+torch.autograd.set_detect_anomaly(True)
 
 from data_iter import real_data_loader, dis_data_loader
 from model.utils import recurrent_func, loss_func, get_sample, get_rewards, get_arguments
@@ -19,6 +20,7 @@ from model.Generator import Generator
 
 # Global param value.
 param_dict = None 
+LOG_MOD = 10
 
 #List of models
 def prepare_model_dict(use_cuda=False):
@@ -76,7 +78,7 @@ def prepare_scheduler_dict(optmizer_dict, step_size=200, gamma=0.99):
 
 #Pretraining the Generator
 def pretrain_generator(model_dict, optimizer_dict, scheduler_dict, dataloader, \
-                       vocab_size, max_norm=5.0, use_cuda=False, epoch=1, \
+                       vocab_size, max_norm=5.0, use_cuda = False, epoch = 1, \
                        tot_epochs=100):
     #get the models of generator
     generator = model_dict["generator"]
@@ -85,9 +87,6 @@ def pretrain_generator(model_dict, optimizer_dict, scheduler_dict, dataloader, \
     #get the optimizers
     m_optimizer = optimizer_dict["manager"]
     w_optimizer = optimizer_dict["worker"]
-    
-    m_optimizer.zero_grad()
-    w_optimizer.zero_grad()
 
     m_lr_scheduler = scheduler_dict["manager"]
     w_lr_scheduler = scheduler_dict["worker"]
@@ -106,24 +105,28 @@ def pretrain_generator(model_dict, optimizer_dict, scheduler_dict, dataloader, \
                                  param["discriminator_params"]["seq_len"]
         if (sample.size() == torch.Size([batch_size, seq_length])): #sometimes smaller than 64 (16) is passed, so this if statement disables it
             w_optimizer.zero_grad()
-            pre_rets = recurrent_func("pre")(model_dict, sample, use_cuda)
-            real_goal = pre_rets["real_goal"]
-            prediction = pre_rets["prediction"]
-            delta_feature = pre_rets["delta_feature"]
-
-            m_loss = loss_func("pre_manager")(real_goal, delta_feature)
-            torch.autograd.grad(m_loss, manager.parameters())
-            clip_grad_norm_(manager.parameters(), max_norm=max_norm)
-            m_optimizer.step()
             m_optimizer.zero_grad()
+
+            pre_rets = recurrent_func("pre")(model_dict, sample, use_cuda)
+            real_goal = pre_rets["real_goal"].squeeze()
+            prediction = pre_rets["prediction"].squeeze()
+            delta_feature = pre_rets["delta_feature"].squeeze()
+            m_loss = loss_func("pre_manager")(real_goal, delta_feature)
+            m_loss.backward()
+            m_optimizer.step()
             
+            # To graph is released after m_optimizer.step() so it's calculated again.
+            pre_rets = recurrent_func("pre")(model_dict, sample, use_cuda)
+            real_goal = pre_rets["real_goal"].squeeze()
+            prediction = pre_rets["prediction"].squeeze()
+            delta_feature = pre_rets["delta_feature"].squeeze()
             w_loss = loss_func("pre_worker")(sample, prediction, vocab_size, use_cuda)
-            torch.autograd.grad(w_loss, worker.parameters())
-            clip_grad_norm_(worker.parameters(), max_norm=max_norm)
+            w_loss.backward()
             w_optimizer.step()
+            
             m_lr_scheduler.step()
             w_lr_scheduler.step()
-            if i == 63:
+            if i % LOG_MOD == 0:
                 print("Pre-Manager Loss: {:.5f}, Pre-Worker Loss: {:.5f}\n".format(m_loss, w_loss))
     """
     Update model_dict, optimizer_dict, and scheduler_dict
