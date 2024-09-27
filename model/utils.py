@@ -143,9 +143,8 @@ def recurrent_func(f_type = "pre"):
                 f_t = discriminator(cur_sen)["feature"]
                 # Generator forward step
                 x_t, h_m_t, c_m_t, h_w_t, c_w_t, last_goal, real_goal, \
-                sub_goal, probs, t_ = generator(x_t, f_t, h_m_t, c_m_t, \
-                                                h_w_t, c_w_t, last_goal, \
-                                                real_goal, t, temperature)
+                probs, t_ = generator(x_t, f_t, h_m_t, c_m_t, h_w_t, c_w_t, \
+                                      last_goal, real_goal, t, temperature)
                 if t % step_size == 0:
                     if t > 0:
                         real_goal = last_goal
@@ -186,21 +185,18 @@ def recurrent_func(f_type = "pre"):
         return func     
     elif f_type == "rollout":
         def func(model_dict, input_x, given_num, use_cuda=False, temperature=1.0):
-            #Get G and D
             generator = model_dict["generator"]
             discriminator = model_dict["discriminator"]
-            #Init vairables and lists for forward step
-            h_w_t, c_w_t, h_m_t, c_m_t, last_goal, real_goal, x_t = \
-                init_vars(generator, discriminator, use_cuda)
-            t = 0
-            gen_token_list = []
             batch_size = generator.worker.batch_size
             seq_len = discriminator.seq_len
             step_size = generator.step_size
             goal_out_size = generator.worker.goal_out_size
             vocab_size = discriminator.vocab_size
-            # Use input_x to perform G forward step
-            while t < given_num +1:
+            #Init vairables and lists for forward step
+            h_w_t, c_w_t, h_m_t, c_m_t, last_goal, real_goal, x_t = init_vars(generator, discriminator, use_cuda)
+            t = 0
+            gen_token_list = []
+            while t < given_num + 1:
                 #Extract f_t
                 if t == 0: 
                     cur_sen = Variable(nn.init.constant_(torch.zeros(batch_size, seq_len), vocab_size)).long()
@@ -212,7 +208,7 @@ def recurrent_func(f_type = "pre"):
                 f_t = discriminator(cur_sen)["feature"]
                 #G forward step now that you have f
                 _, h_m_t, c_m_t, h_w_t, c_w_t, last_goal, real_goal,\
-                sub_goal, probs, t_ = generator( x_t, f_t, h_m_t, c_m_t, h_w_t, c_w_t, last_goal, real_goal, t, temperature)
+                probs, t_ = generator(x_t, f_t, h_m_t, c_m_t, h_w_t, c_w_t, last_goal, real_goal, t, temperature)
                 if t % step_size == 0:
                     if t > 0:
                         real_goal = last_goal
@@ -253,40 +249,29 @@ def recurrent_func(f_type = "pre"):
         def func(model_dict, use_cuda=False, temperature=1.0):
             generator = model_dict["generator"]
             discriminator = model_dict["discriminator"]
-            h_w_t, c_w_t, h_m_t, c_m_t, last_goal, real_goal, x_t = \
-                init_vars(generator, discriminator, use_cuda)
-            t = 0
-            gen_token_list = []
             batch_size = generator.worker.batch_size
             seq_len = discriminator.seq_len
             step_size = generator.step_size
             goal_out_size = generator.worker.goal_out_size
             vocab_size = discriminator.vocab_size
-            # G forward
+            h_w_t, c_w_t, h_m_t, c_m_t, last_goal, real_goal, x_t = \
+                init_vars(generator, discriminator, use_cuda)
+            
+            t = 0
+            cur_sen = nn.init.constant_(torch.zeros(batch_size, seq_len), vocab_size).long()
+            if use_cuda: cur_sen = cur_sen.cuda(non_blocking = True)
+            gen_token_list = []
             while t < seq_len:
-                # Extract f_t
-                if t == 0:
-                    cur_sen = Variable(nn.init.constant_(
-                        torch.zeros(batch_size, seq_len), vocab_size)
-                    ).long()
-                    if use_cuda:
-                        cur_sen = cur_sen.cuda(non_blocking=True)
-                else:
-                    cur_sen = torch.stack(gen_token_list).permute(1, 0)
-                    cur_sen = F.pad(cur_sen, (0, seq_len - t), value=vocab_size)
                 f_t = discriminator(cur_sen)["feature"]
-                # G forward step
-                x_t, h_m_t, c_m_t, h_w_t, c_w_t, last_goal, \
-                real_goal, sub_goal, probs, t_ = generator(x_t, f_t, h_m_t, c_m_t, \
-                                                           h_w_t, c_w_t, last_goal, \
-                                                           real_goal, t, temperature)
                 if t % step_size == 0:
-                    if t > 0:
-                        real_goal = last_goal
-                        last_goal = Variable(torch.zeros(batch_size, goal_out_size))
-                    if use_cuda:
-                        last_goal = last_goal.cuda(non_blocking=True)
+                    last_goal = torch.zeros(batch_size, goal_out_size)
+                    if use_cuda: last_goal = last_goal.cuda(non_blocking = True)
+                x_t, h_m_t, c_m_t, h_w_t, c_w_t, last_goal, real_goal, \
+                probs, t_ = generator(x_t, f_t, h_m_t, c_m_t, h_w_t, c_w_t, last_goal, real_goal, t, temperature)
                 gen_token_list.append(x_t)
+                cur_sen = torch.stack(gen_token_list).permute(1, 0)
+                cur_sen = F.pad(cur_sen, (0, seq_len - t), value=vocab_size)
+                if use_cuda: cur_sen = cur_sen.cuda(non_blocking = True)
                 t = t_
             gen_token = torch.stack(gen_token_list).permute(1,0)
             return gen_token
