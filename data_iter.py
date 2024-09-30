@@ -14,8 +14,8 @@ class Real_Dataset(Dataset):
 
 class Dis_Dataset(Dataset):
     def __init__(self, positive_filepath, negative_filepath):
-        pos_data = np.load(positive_filepath, allow_pickle=True)
-        neg_data = np.load(negative_filepath, allow_pickle=True)
+        pos_data = np.load(positive_filepath, allow_pickle = True)
+        neg_data = np.load(negative_filepath, allow_pickle = True)
         pos_label = np.array([1 for _ in pos_data])
         neg_label = np.array([0 for _ in neg_data])
         self.data = np.concatenate([pos_data, neg_data])
@@ -32,8 +32,8 @@ class Dis_Dataset(Dataset):
 
 def real_data_loader(filepath, batch_size, shuffle, num_workers, pin_memory):
     dataset = Real_Dataset(filepath)
-    return DataLoader(dataset, batch_size = batch_size, num_workers = num_workers, pin_memory = pin_memory)
+    return DataLoader(dataset, batch_size = batch_size, shuffle = shuffle, num_workers = num_workers, pin_memory = pin_memory)
 
 def dis_data_loader(positive_filepath, negative_filepath, batch_size, shuffle, num_workers, pin_memory):
     dataset = Dis_Dataset(positive_filepath, negative_filepath)
-    return DataLoader(dataset, batch_size = batch_size, num_workers = num_workers, pin_memory = pin_memory)
+    return DataLoader(dataset, batch_size = batch_size, shuffle = shuffle, num_workers = num_workers, pin_memory = pin_memory)
