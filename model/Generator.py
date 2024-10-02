@@ -30,20 +30,16 @@ class Manager(nn.Module):
             self.goal_out_size #out_features
         )
         self.goal_init = nn.Parameter(torch.zeros(self.batch_size, self.goal_out_size))
+        self.last_goal_wts = torch.ones(self.batch_size, self.goal_out_size) * (1/2)
+        self.last_goal = torch.zeros(self.batch_size, self.goal_out_size, dtype = torch.float32, requires_grad = True)
         self._init_params()
 
     def _init_params(self):
         for param in self.parameters():
             nn.init.normal_(param, std=0.1)
-        self.goal_init.data = truncated_normal(
-            self.goal_init.data.shape
-        )
+        self.goal_init.data = truncated_normal(self.goal_init.data.shape)
+
     def forward(self, f_t, h_m_t, c_m_t):
-        """
-        f_t = feature of CNN from discriminator leaked at time t, it is input into LSTM
-        h_m_t = ouput of previous LSTMCell
-        c_m_t = previous cell state
-        """
         h_m_tp1, c_m_tp1 = self.recurrent_unit(f_t, (h_m_t, c_m_t))
         sub_goal = self.fc(h_m_tp1)
         sub_goal = torch.renorm(sub_goal, 2, 0, 1.0) #Returns a tensor where each sub-tensor of input along dimension dim is normalized such that the p-norm of the sub-tensor is lower than the value maxnorm
@@ -87,26 +83,27 @@ class Generator(nn.Module):
         self.step_size = step_size
         self.worker = Worker(**worker_params)
         self.manager = Manager(**manager_params)
-
+        
     def init_hidden(self):
-        h = Variable(torch.zeros(self.worker.batch_size, self.worker.hidden_dim))
-        c = Variable(torch.zeros(self.worker.batch_size, self.worker.hidden_dim))
-        return h, c
+        batch_size, goal_out_size = self.manager.batch_size, self.manager.goal_out_size
+        self.manager.last_goal = torch.zeros(batch_size, goal_out_size, dtype = torch.float32, requires_grad = True)
+        h_w = Variable(torch.zeros(self.worker.batch_size, self.worker.hidden_dim))
+        c_w = Variable(torch.zeros(self.worker.batch_size, self.worker.hidden_dim))
+        h_m = Variable(torch.zeros(self.worker.batch_size, self.worker.hidden_dim))
+        c_m = Variable(torch.zeros(self.worker.batch_size, self.worker.hidden_dim))
+        return h_w, c_w, h_m, c_m
 
-    def forward(self, x_t, f_t, h_m_t, c_m_t, h_w_t, c_w_t, last_goal, real_goal, t, temperature):
+    def forward(self, x_t, f_t, h_m_t, c_m_t, h_w_t, c_w_t, t, temperature):
         sub_goal, h_m_tp1, c_m_tp1 = self.manager(f_t, h_m_t, c_m_t)
         output, h_w_tp1, c_w_tp1 = self.worker(x_t, h_w_t, c_w_t)
-        last_goal_temp = last_goal + sub_goal
-        w_t = torch.matmul(
-            sub_goal, self.worker.goal_change
-        )
+        self.manager.last_goal = self.manager.last_goal_wts * self.manager.last_goal + sub_goal
+        w_t = torch.matmul(sub_goal, self.worker.goal_change)
         w_t = torch.renorm(w_t, 2, 0, 1.0)
         w_t = torch.unsqueeze(w_t, -1)
         logits = torch.squeeze(torch.matmul(output, w_t))
         probs = F.softmax(temperature * logits, dim=1)
         x_tp1 = Categorical(probs).sample()
-        return x_tp1, h_m_tp1, c_m_tp1, h_w_tp1, c_w_tp1,\
-               last_goal_temp, sub_goal, probs, t + 1
+        return x_tp1, h_m_tp1, c_m_tp1, h_w_tp1, c_w_tp1, sub_goal, probs, t + 1
     
     def get_model_wts(self, is_trainable = True):
         if is_trainable:

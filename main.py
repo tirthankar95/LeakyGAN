@@ -1,14 +1,14 @@
 import argparse 
-
-from model.utils import recurrent_func, get_arguments
+import glob
+from model.utils import recurrent_func
 from datagencode.encode_decode import tensor_to_text
 from datagencode.frmt_dat import create_frmt_data
 from model.train_model import restore_checkpoint, train
 
+
+
 def get_sentence():
-    param_dict = get_arguments()
-    restore_checkpoint_path = param_dict["train_params"]["checkpoint_path"]
-    try: model = restore_checkpoint(restore_checkpoint_path)["model_dict"]
+    try: model = restore_checkpoint()["model_dict"]
     except: return
     gen_tokens = recurrent_func("gen")(model)
     for token in gen_tokens:
