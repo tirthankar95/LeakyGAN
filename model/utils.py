@@ -315,7 +315,6 @@ def loss_func(f_type="pre_worker"):
             gen_token = gen_token[:, :(feature_size - step_size)]
             prediction = prediction[:, :(feature_size - step_size)]
             prediction = torch.clamp(prediction, 1e-20, 1.0)
-            print(intrinsic_reward.shape, prediction.shape, gen_token.shape)
             loss = -torch.mean(intrinsic_reward * torch.sum(one_hot(gen_token, vocab_size, use_cuda)* torch.log(prediction), dim=2))
             return loss
         return func

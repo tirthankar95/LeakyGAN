@@ -1,6 +1,5 @@
 import pandas as pd
 import numpy as np 
-
 from datagencode.encode_decode import add_to_vocab
 from model.utils import get_arguments
 
@@ -13,7 +12,9 @@ def create_frmt_data(filePath, pf):
     for idx, text in enumerate(df["Questions"]):
         text_arr = text.split()
         # Case insensitive.
-        text_arr = [word.lower() for word in text_arr]
+        param_dict = get_arguments()
+        step_size = param_dict["leak_gan_params"]["generator_params"]["step_size"]
+        text_arr = ['<R>'] * step_size + [word.lower() for word in text_arr] + ['<R>'] * step_size
         # Creating a gap between word and punctuations.
         new_text_arr = []
         for word in text_arr:

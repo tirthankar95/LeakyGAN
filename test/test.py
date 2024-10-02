@@ -9,7 +9,16 @@ logging.basicConfig(
 sys.path.append("../")
 from model.train_model import restore_checkpoint
 from data_iter import Real_Dataset
+from datagencode.encode_decode import tensor_to_text
 from torch.utils.data import DataLoader
+
+def test_positive_examples():
+    positive_dataset = Real_Dataset("../formatted_data/positive_corpus.npy")
+    data_loader = DataLoader(positive_dataset, shuffle = True, batch_size = 4)
+    for sample in data_loader:
+        for sentence in sample:
+            logging.debug(tensor_to_text(sentence, ".././formatted_data/"))
+
 
 def test_discriminator(positive, negative):
     discriminator = restore_checkpoint(prefix = "../")["model_dict"]["discriminator"]
@@ -37,6 +46,8 @@ def test_discriminator(positive, negative):
             logging.debug(f"Class 1: {pred[:, 1]}")
             logging.debug("-----------------------------------------------")
         logging.debug("\n")
+    assert True
 
-if __name__ == "__main__":
-    test_discriminator(True, True)
+if __name__ == '__main__':
+    test_positive_examples()
+    # test_discriminator(True, True)

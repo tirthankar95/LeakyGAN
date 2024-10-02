@@ -211,7 +211,7 @@ def adversarial_train(model_dict, optimizer_dict, scheduler_dict, dis_dataloader
         feature_list = adv_rets["feature_list"]
         gen_token = adv_rets["gen_token"]
         w_loss = loss_func("adv_worker")(real_goal, feature_list, gen_token, prediction, \
-                                         generator.step_size, vocab_size, use_cuda)
+                                         vocab_size, generator.step_size, use_cuda)
         w_loss.backward()
         w_optimizer.step()
 
@@ -224,7 +224,6 @@ def adversarial_train(model_dict, optimizer_dict, scheduler_dict, dis_dataloader
     del adv_rets
     del real_goal
     del prediction
-    del delta_feature
     del gen_token
     del rewards
     
@@ -267,7 +266,7 @@ def adversarial_train(model_dict, optimizer_dict, scheduler_dict, dis_dataloader
     scheduler_dict["disciminator"] = d_lr_scheduler
     return model_dict, optimizer_dict, scheduler_dict
 
-def get_latest_model(prefix) -> str:
+def get_model(prefix = "./", type = "latest") -> str:
     def get_no(s):
         standard = "checkpoint"
         for idx, ch in enumerate(s):
@@ -280,22 +279,22 @@ def get_latest_model(prefix) -> str:
                 if i - idx == len(standard):
                     return int(s[i:])
         return -1
-    mx_rank = -1
+    rank = []
     for file in glob.glob(f"{prefix}saved_models/*.tar"):
         words = file.split('.')
         file_rank = get_no(words[-3])
-        if mx_rank < file_rank:
-            mx_rank = file_rank
-    file_name = f"./saved_models/checkpoint{mx_rank}.pth.tar"
+        rank.append(file_rank)
+    rank.sort()
+    file_name = f"./saved_models/checkpoint{rank[0]}.pth.tar"
+    if type == "latest":
+        file_name = f"./saved_models/checkpoint{rank[-1]}.pth.tar"
     return file_name
 
-def save_checkpoint(model_dict, optimizer_dict, scheduler_dict, ckpt_num, replace=False):
+def save_checkpoint(model_dict, optimizer_dict, scheduler_dict, ckpt_num, replace = False):
     file_name = "./saved_models/checkpoint" + str(ckpt_num) + ".pth.tar"
     torch.save({"model_dict": model_dict, "optimizer_dict": optimizer_dict, "scheduler_dict": scheduler_dict, "ckpt_num": ckpt_num}, file_name)
     if replace:
-        ckpts = glob.glob("checkpoint*")
-        ckpt_nums = [int(x.split('.')[0][10:]) for x in ckpts]
-        oldest_ckpt = "checkpoint" + str(min(ckpt_nums)) + ".pth.tar"
+        oldest_ckpt = get_model(type = "oldest")
         os.remove(oldest_ckpt)
 
 def restore_checkpoint(prefix = "./", ckpt_path = None):
@@ -304,7 +303,7 @@ def restore_checkpoint(prefix = "./", ckpt_path = None):
     '''
     try:
         if ckpt_path == None:
-            ckpt_path = get_latest_model(prefix)
+            ckpt_path = get_model(prefix)
         combined_path = prefix + ckpt_path
         checkpoint = torch.load(combined_path, weights_only = False)
     except:
