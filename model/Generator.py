@@ -96,12 +96,13 @@ class Generator(nn.Module):
     def forward(self, x_t, f_t, h_m_t, c_m_t, h_w_t, c_w_t, t, temperature):
         sub_goal, h_m_tp1, c_m_tp1 = self.manager(f_t, h_m_t, c_m_t)
         output, h_w_tp1, c_w_tp1 = self.worker(x_t, h_w_t, c_w_t)
+        sub_goal = F.normalize(sub_goal, dim = 1)
         self.manager.last_goal = self.manager.last_goal_wts * self.manager.last_goal + sub_goal
         w_t = torch.matmul(sub_goal, self.worker.goal_change)
         w_t = torch.renorm(w_t, 2, 0, 1.0)
         w_t = torch.unsqueeze(w_t, -1)
         logits = torch.squeeze(torch.matmul(output, w_t))
-        probs = F.softmax(temperature * logits, dim=1)
+        probs = F.softmax(temperature * logits, dim = 1)
         x_tp1 = Categorical(probs).sample()
         return x_tp1, h_m_tp1, c_m_tp1, h_w_tp1, c_w_tp1, sub_goal, probs, t + 1
     

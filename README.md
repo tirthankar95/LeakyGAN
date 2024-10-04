@@ -1,7 +1,12 @@
-## Errors to be fixed.
-If the seq length is not a multiple of step_size there is a mismatch.
-`main.py:266`
-`print(rewards.shape, real_goal.shape, delta_feature.shape)`
+### Features.
+1. Display options: `python3 main.py -h`
+2. Preprocess positive examples: `python3 main.py --option datagen`
+  - involved files: **datagencode/frmt_dat.py**, dataset is passed through **main.py**
+  `create_frmt_data("./raw_data/small_dataset.csv","./formatted_data/positive_corpus.npy")`
+  - adds padding & does truncation if sequence length is less or exceeds
+  - adds **\<R\>** x **step_size** at the beginning and end.
+3. Train model: `python3 main.py --option train`
+4. Generate Questions: `python3 main.py --option generate`
 
 ## Reference
 ```bash
@@ -17,4 +22,4 @@ Main source:
 1. https://github.com/CR-Gjx/LeakGAN/blob/master/Image%20COCO/
 2. https://github.com/deep-art-project/Music/blob/master/leak_gan/
 
-Copyright (c) 2019 Nurpeiis Baimukan
+Copyright (c) 2024 Tirthankar Mittra

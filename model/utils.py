@@ -4,6 +4,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.nn import CrossEntropyLoss
 import json
 import time
 import logging 
@@ -167,7 +168,7 @@ def recurrent_func(f_type = "pre"):
                 cur_sen = F.pad(cur_sen, (0, seq_len - t), value=vocab_size)
                 t = t_
                 
-            # Perform Rollout
+            # Perform Rollout, after following sequence upto time 't' in the above while-loop.
             while t < seq_len:
                 if len(gen_token_list) != 0:
                     cur_sen = torch.stack(gen_token_list).permute(1,0)
@@ -218,52 +219,50 @@ def recurrent_func(f_type = "pre"):
 def get_sample(model_dict, use_cuda=False, temperature=1.0):
     return recurrent_func("gen")(model_dict, use_cuda, temperature)
 
-def get_rewards(model_dict, input_x, rollout_num, use_cuda=False, temperature=1.0, delta=16.0):
-    generator = model_dict["generator"]
+def get_rewards(model_dict, input_x, rollout_num, use_cuda=False, temperature=1.0, delta=12.0):
     discriminator = model_dict["discriminator"]
     discriminator = discriminator.eval()
     seq_len = discriminator.seq_len
-    step_size = generator.step_size
     rewards = []
     rollout_func = recurrent_func("rollout")
     for i in range(rollout_num):
         given_num = 0
-        while given_num + step_size < seq_len:
+        while given_num < seq_len:
             sample_for_reward = rollout_func(model_dict, input_x, given_num, use_cuda, temperature)
             pred = discriminator(sample_for_reward)["pred"]
-            pred = pred[:, 1].data 
+            pred = F.softmax(pred, dim = 1)
+            pred = pred.data 
             if use_cuda: pred = pred.cpu()
             pred = pred.numpy()
+            pred = -1 * pred[:,0] + 1 * pred[:,1]
             pred = pred.reshape(-1)
             if i == 0: rewards.append(pred)
-            else: rewards[int(given_num/step_size)] += pred
-            given_num += step_size
-    rewards = rescale(rewards, delta) / rollout_num
+            else: rewards[given_num] += pred
+            given_num += 1
+    rewards_type1 = torch.from_numpy(np.array(rewards)) / rollout_num
+    rewards_type1 = rewards_type1.permute(1, 0)
+    rewards_type2 = rescale(rewards, delta) / rollout_num
+    # logging.debug(rewards_type1)
+    # logging.debug(rewards_type2)
+    # assert False
     if use_cuda: rewards = rewards.cuda(non_blocking = True)
     discriminator = discriminator.train()
-    return rewards
+    return rewards_type1
 
-def rescale(rewards, delta=16.0):
-    """
-    Why Rescaled activation: during adversarial training of SeqGAN severe gradient vanishing occurs when D is much stronger than G, i.e. the reward is too small value to update the parameters
-    and thus need to be rescaled before being fed into G.
-        parameters for rewards:
-            type: list
-            length: seq_len / c, where c is c recent goals(steps into future)
-            elements: np.array(size=batch_size)
-            R(reward matrix) = expit(delta * (0.5 - rank(i)/B)), where expit, is an activation function that re-projects the equidifferent scoring based on ranking to a more effective distribution. 
-            In this model authors of the paper decided expit to be sigmoid function: expit = 1/(1+exp(-x))
-    """
+def rescale(rewards, delta=12.0):
+    '''
+    delta controls how extreme lower and upper probabilities are.
+    '''
     r = np.array(rewards)
     _, batch_size = r.shape
     order = np.argsort(r)
     rank = np.argsort(order)
     rank = batch_size - rank
     rescaled_rewards = expit(delta*(0.5 - rank/batch_size))
-    rescaled_rewards = np.transpose(rescaled_rewards)
+    rescaled_rewards = np.transpose(rescaled_rewards) # To make batch_size the first dimension.
     return Variable(torch.from_numpy(rescaled_rewards)).float()
 
-def one_hot(x, vocab_size, use_cuda=False):
+def one_hot(x, vocab_size, use_cuda = False):
     batch_size, seq_len = x.size()
     out = torch.zeros(batch_size * seq_len, vocab_size, device=x.device)
     x = x.contiguous()
@@ -284,38 +283,27 @@ def loss_func(f_type="pre_worker"):
     5 kind of loss function: pre_worker, pre_manager, adv_worker, adv_manager, dis
     """
     if f_type == "pre_worker":
-        def func(real_data, prediction, vocab_size, use_cuda=False):
-            # This prediction is from the generator of each token.
-            prediction = torch.clamp(prediction, 1e-20, 1.0) 
-            loss = -torch.mean(one_hot(real_data, vocab_size, use_cuda) * torch.log(prediction))
+        def func(real_data, prediction, vocab_size, use_cuda):
+            # logging.debug(prediction)
+            loss = -torch.mean(torch.sum(one_hot(real_data, vocab_size, use_cuda) * torch.log(prediction), dim=2))
             return loss
         return func
     elif f_type == "pre_manager":
         def func(real_goal, feature, step_size):
-            feature_size = feature.shape[1] #Get sequence length.
+            # logging.debug(real_goal)
+            feature_size = feature.shape[1] # Get sequence length.
             delta_feature = [feature[:, tt + step_size] - feature[:, tt] for tt in range(feature_size)\
                              if tt + step_size < feature_size]
             delta_feature = torch.stack(delta_feature, dim = 0).permute(1, 0, 2)
             real_goal = real_goal[:, :(feature_size - step_size)]
-            loss = -torch.mean(F.cosine_similarity(real_goal, delta_feature))
+            cosine_similar = torch.abs(F.cosine_similarity(real_goal, delta_feature, dim = 2))
+            loss = torch.mean(cosine_similar)
             return loss
         return func
     elif f_type == "adv_worker":
-        def func(real_goal, feature_list, gen_token, prediction, vocab_size, step_size, use_cuda = False):
-            delta_features = feature_list.clone()
-            feature_size = feature_list.shape[1]
-            intrinsic_reward = []
-            for i in range(1, feature_size):
-                similarity_list = []
-                for j in range(i):
-                    similarity_list.append(F.cosine_similarity(delta_features[:, i] - delta_features[:, i-j], real_goal[:, i-j]))
-                similarity_list = torch.stack(similarity_list, dim = 0)
-                intrinsic_reward.append(similarity_list.mean())
-            intrinsic_reward = torch.stack(intrinsic_reward, dim = 0)
-            gen_token = gen_token[:, :(feature_size - step_size)]
-            prediction = prediction[:, :(feature_size - step_size)]
-            prediction = torch.clamp(prediction, 1e-20, 1.0)
-            loss = -torch.mean(intrinsic_reward * torch.sum(one_hot(gen_token, vocab_size, use_cuda)* torch.log(prediction), dim=2))
+        def func(gen_token, prediction, rewards, vocab_size, use_cuda):
+            loss = -torch.mean(rewards * torch.sum(one_hot(gen_token, vocab_size, use_cuda) *  torch.log(prediction), dim=2))
+            # logging.debug(rewards)
             return loss
         return func
     elif f_type == "adv_manager":
@@ -325,7 +313,9 @@ def loss_func(f_type="pre_worker"):
                              if tt + step_size < feature_size]
             delta_feature = torch.stack(delta_feature, dim = 0).permute(1, 0, 2)
             real_goal = real_goal[:, :(feature_size - step_size)]
-            loss = -torch.mean(rewards*(F.cosine_similarity(delta_feature, real_goal, dim=2)))
+            rewards = rewards[:, :(feature_size - step_size)]
+            cosine_similarity = torch.abs(F.cosine_similarity(real_goal, delta_feature, dim=2))
+            loss = torch.mean(rewards * cosine_similarity)
             return loss
         return func
     elif f_type == "dis":

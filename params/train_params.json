@@ -1,16 +1,15 @@
 {
-    "lr_dict":{"worker":0.0015,"manager":0.0015,"discriminator":5e-5},
+    "lr_dict":{"worker":0.0005,"manager":0.0015,"discriminator":5e-5},
     "decay_step_size":200,
     "decay_rate":0.99,
-    "total_epoch":2, 
+    "total_epoch":10, 
     "generated_num":16,
     "save_num":10,
     "replace_num":5,
-    "pre_dis_epoch_num":2,
-    "pre_gen_epoch_num":2,
+    "pre_dis_epoch_num":10,
+    "pre_gen_epoch_num":10,
     "pos_filepath":"./formatted_data/positive_corpus.npy",
     "neg_filepath":"./formatted_data/negative_corpus.npy",
     "model_path":"./ckpts/",
-    "seed":233,
-    "checkpoint_path":"./saved_models/checkpoint0.pth.tar"
+    "seed":233
 }

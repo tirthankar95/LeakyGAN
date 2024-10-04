@@ -103,7 +103,8 @@ def pretrain_generator(model_dict, optimizer_dict, scheduler_dict, dataloader, \
             m_loss = loss_func("pre_manager")(real_goal, features, generator.step_size)
             m_loss.backward()
             m_optimizer.step()
-            # To graph is released after m_optimizer.step() so it's calculated again.
+
+            # Graph is released after m_optimizer.step() so it's calculated again.
             pre_rets = recurrent_func("pre")(model_dict, sample, use_cuda)
             real_goal = pre_rets["real_goal"].squeeze()
             prediction = pre_rets["prediction"].squeeze()
@@ -170,8 +171,8 @@ def pretrain_discriminator(model_dict, optimizer_dict, scheduler_dict,
 
 #Adversarial training 
 def adversarial_train(model_dict, optimizer_dict, scheduler_dict, dis_dataloader_params,
-                      vocab_size, pos_file, neg_file, batch_size, gen_train_num = 1,
-                      dis_train_epoch = 5, dis_train_num = 3, max_norm = 5.0,
+                      vocab_size, pos_file, neg_file, batch_size, gen_train_num = 2,
+                      dis_train_epoch = 1, dis_train_num = 1, max_norm = 5.0,
                       rollout_num = 4, use_cuda = False, temperature = 1.0, epoch = 1, tot_epoch = 100):
     """
         Get all the models, optimizer and schedulers
@@ -208,10 +209,9 @@ def adversarial_train(model_dict, optimizer_dict, scheduler_dict, dis_dataloader
         adv_rets = recurrent_func("adv")(model_dict, use_cuda)
         real_goal = adv_rets["real_goal"]
         prediction = adv_rets["prediction"]
-        feature_list = adv_rets["feature_list"]
         gen_token = adv_rets["gen_token"]
-        w_loss = loss_func("adv_worker")(real_goal, feature_list, gen_token, prediction, \
-                                         vocab_size, generator.step_size, use_cuda)
+        rewards = get_rewards(model_dict, gen_token, rollout_num, use_cuda)
+        w_loss = loss_func("adv_worker")(gen_token, prediction, rewards, vocab_size, use_cuda)
         w_loss.backward()
         w_optimizer.step()
 
@@ -250,7 +250,7 @@ def adversarial_train(model_dict, optimizer_dict, scheduler_dict, dis_dataloader
                 loss = cross_entropy(outs["score"], label.view(-1)) + discriminator.l2_loss()
                 loss.backward()
                 d_optimizer.step()
-            d_lr_scheduler.step()
+        d_lr_scheduler.step()
         logging.debug("{}/{} Adv-Discriminator Loss: {:.5f}".format(n, range(dis_train_epoch),loss))
     
     # Save all changes
@@ -318,6 +318,7 @@ def train():
     #Random seed
     torch.manual_seed(param_dict["train_params"]["seed"])
     #Pretrain step
+    ckpt_num = 0
     checkpoint = restore_checkpoint()
     if checkpoint == None:
         model_dict = prepare_model_dict(use_cuda)
@@ -347,7 +348,6 @@ def train():
     for i in range(param_dict["train_params"]["pre_dis_epoch_num"]):
         logging.debug("Epoch: {}/{}  Pre-Discriminator".format(i, param_dict["train_params"]["pre_dis_epoch_num"]))
         model_dict, optimizer_dict, scheduler_dict = pretrain_discriminator(model_dict, optimizer_dict, scheduler_dict, dis_data_params, vocab_size = vocab_size, positive_file = pos_file, negative_file = neg_file, batch_size = batch_size, epochs = 1, use_cuda = use_cuda)
-    ckpt_num = 0
     save_checkpoint(model_dict, optimizer_dict, scheduler_dict, ckpt_num)
 
     #Pretrain generator 
@@ -364,8 +364,6 @@ def train():
     #Finish pretrain and save the checkpoint
     save_checkpoint(model_dict, optimizer_dict, scheduler_dict, ckpt_num)
     
-    
-    ckpt_num = 1
     #Adversarial train of D and G
     logging.debug ("#########################################################################")
     logging.debug ("Start Adversarial Training...")
