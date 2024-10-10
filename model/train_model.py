@@ -18,6 +18,7 @@ from data_iter import real_data_loader, dis_data_loader
 from model.utils import recurrent_func, loss_func, get_sample, get_rewards, get_arguments
 from model.Discriminator import Discriminator
 from model.Generator import Generator
+import model.Bleu as Bleu
 
 # Global param value.
 param_dict, step_size = None, None
@@ -83,6 +84,7 @@ def pretrain_generator(model_dict, optimizer_dict, scheduler_dict, dataloader, \
     w_optimizer = optimizer_dict["worker"]
     m_lr_scheduler = scheduler_dict["manager"]
     w_lr_scheduler = scheduler_dict["worker"]
+    m_loss, w_loss = 0, 0
     """
      Perform pretrain step for real data
     """
@@ -93,22 +95,23 @@ def pretrain_generator(model_dict, optimizer_dict, scheduler_dict, dataloader, \
         batch_size, seq_length = param["generator_params"]["manager_params"]["batch_size"],\
                                  param["discriminator_params"]["seq_len"]
         if (sample.size() == torch.Size([batch_size, seq_length])): #sometimes smaller than 64 (16) is passed, so this if statement disables it
+            # Manager
+            # m_optimizer.zero_grad()
+            # pre_rets = recurrent_func("pre")(model_dict, sample, use_cuda)
+            # real_goal = pre_rets["real_goal"].squeeze()
+            # prediction = pre_rets["prediction"].squeeze()
+            # features = pre_rets["feature_list"].squeeze()
+            # m_loss = loss_func("pre_manager")(real_goal, features, generator.step_size)
+            # m_loss.backward()
+            # m_optimizer.step()
+            '''
+            Graph is released after m_optimizer.step() 
+            so it's calculated again.
+            '''
+            # Worker
             w_optimizer.zero_grad()
-            m_optimizer.zero_grad()
-
             pre_rets = recurrent_func("pre")(model_dict, sample, use_cuda)
-            real_goal = pre_rets["real_goal"].squeeze()
             prediction = pre_rets["prediction"].squeeze()
-            features = pre_rets["feature_list"].squeeze()
-            m_loss = loss_func("pre_manager")(real_goal, features, generator.step_size)
-            m_loss.backward()
-            m_optimizer.step()
-
-            # Graph is released after m_optimizer.step() so it's calculated again.
-            pre_rets = recurrent_func("pre")(model_dict, sample, use_cuda)
-            real_goal = pre_rets["real_goal"].squeeze()
-            prediction = pre_rets["prediction"].squeeze()
-            features = pre_rets["feature_list"].squeeze()
             w_loss = loss_func("pre_worker")(sample, prediction, vocab_size, use_cuda)
             w_loss.backward()
             w_optimizer.step()
@@ -189,20 +192,20 @@ def adversarial_train(model_dict, optimizer_dict, scheduler_dict, dis_dataloader
     m_lr_scheduler = scheduler_dict["manager"]
     w_lr_scheduler = scheduler_dict["worker"]
     d_lr_scheduler = scheduler_dict["discriminator"]
-    
+    m_loss, w_loss = 0, 0 
     # Adversarial training for generator
     for _ in range(gen_train_num):
         # Manager.
-        m_optimizer.zero_grad()
-        adv_rets = recurrent_func("adv")(model_dict, use_cuda)
-        real_goal = adv_rets["real_goal"]
-        prediction = adv_rets["prediction"]
-        features = adv_rets["feature_list"]
-        gen_token = adv_rets["gen_token"]
-        rewards = get_rewards(model_dict, gen_token, rollout_num, use_cuda)
-        m_loss = loss_func("adv_manager")(rewards, real_goal, features, generator.step_size)
-        m_loss.backward()
-        m_optimizer.step()
+        # m_optimizer.zero_grad()
+        # adv_rets = recurrent_func("adv")(model_dict, use_cuda)
+        # real_goal = adv_rets["real_goal"]
+        # prediction = adv_rets["prediction"]
+        # features = adv_rets["feature_list"]
+        # gen_token = adv_rets["gen_token"]
+        # rewards = get_rewards(model_dict, gen_token, rollout_num, use_cuda)
+        # m_loss = loss_func("adv_manager")(rewards, real_goal, features, generator.step_size)
+        # m_loss.backward()
+        # m_optimizer.step()
         
         # Worker.
         w_optimizer.zero_grad()
@@ -241,8 +244,6 @@ def adversarial_train(model_dict, optimizer_dict, scheduler_dict, dis_dataloader
             for i, sample in enumerate(dataloader):
                 d_optimizer.zero_grad()
                 data, label = sample["data"], sample["label"]
-                data = Variable(data)
-                label = Variable(label)
                 if use_cuda:
                     data = data.cuda(non_blocking = True)
                     label = label.cuda(non_blocking = True)
@@ -381,5 +382,16 @@ def train():
             else:
                 save_checkpoint(model_dict, optimizer_dict, scheduler_dict, ckpt_num)
 
-# if __name__ == "__main__":
-#     train()
+def eval(prefix = "./", n_samples = 4) -> float:
+    bleu_score, bleu_score_batch = 0.0, 0.0
+    pos_file = torch.from_numpy(np.load(prefix + "./formatted_data/positive_corpus.npy"))
+    model_dict = restore_checkpoint(prefix)["model_dict"]
+    for _ in range(n_samples):
+        gen_data = get_sample(model_dict, use_cuda = False, temperature = 1.0)
+        bleu_score = Bleu.get_bleu(pos_file, gen_data) # gendata * pos_file bleu's score
+        '''
+            The sentence generated should match atleast one 
+            positive sentence, hence taking max.
+        '''
+        bleu_score_batch += np.max(bleu_score, axis = 1).mean()
+    return bleu_score_batch/n_samples

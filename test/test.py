@@ -1,17 +1,52 @@
 import sys
 import torch
 import torch.nn.functional as F
+from torch.utils.data import DataLoader
+import matplotlib.pyplot as plt 
+import seaborn as sns 
+sns.set_style('darkgrid') 
 import logging
 logging.basicConfig(
     level=logging.DEBUG, 
     format='%(asctime)s - %(filename)s - Line: %(lineno)d - %(message)s',  
 )
 sys.path.append("../")
-from model.train_model import restore_checkpoint
+from model.train_model import restore_checkpoint, eval
 from data_iter import Real_Dataset
 from datagencode.encode_decode import tensor_to_text
-from torch.utils.data import DataLoader
 import pickle as pkl
+from model.utils import get_rewards
+
+def test_model_eval():
+    samples, bleu_score = 100, []
+    for _ in range(samples):
+        bleu_score.append(eval(prefix = "../"))
+    sns.histplot(data = bleu_score, kde = True)
+    plt.xlabel('Bleu Score')
+    plt.title('Bleu Score Histogram')
+    plt.savefig('BleuHist.png')
+
+def test_get_rewards():
+    model_dict = restore_checkpoint(prefix = "../")["model_dict"]
+    positive_dataset = Real_Dataset("../formatted_data/positive_corpus.npy")
+    data_loader = DataLoader(positive_dataset, batch_size = 4, shuffle = True)
+    batch_size, res = 4, None
+    for sample in data_loader:
+        res = get_rewards(model_dict, sample, rollout_num = 4, \
+                        use_cuda = False, temperature = 1.0, delta = 12.0)
+        break
+    logging.debug(f'---- +ve Examples -----') 
+    logging.debug(f'{res.mean(axis  = 0)}')
+    # -------------------------------------
+    negative_dataset = Real_Dataset("../formatted_data/negative_corpus.npy")
+    data_loader = DataLoader(negative_dataset, batch_size = 4, shuffle = True)
+    batch_size, res = 4, None
+    for sample in data_loader:
+        res = get_rewards(model_dict, sample, rollout_num = 4, \
+                        use_cuda = False, temperature = 1.0, delta = 12.0)
+        break
+    logging.debug(f'---- -ve Examples -----') 
+    logging.debug(f'{res.mean(axis  = 0)}')
 
 def test_vocab():
     vocab = {}
@@ -25,7 +60,6 @@ def test_positive_examples():
     for sample in data_loader:
         for sentence in sample:
             logging.debug(tensor_to_text(sentence, ".././formatted_data/"))
-
 
 def test_discriminator(positive, negative):
     discriminator = restore_checkpoint(prefix = "../")["model_dict"]["discriminator"]
@@ -67,3 +101,5 @@ if __name__ == '__main__':
     # test_vocab()
     # test_positive_examples()
     test_discriminator(True, True)
+    # test_get_rewards()
+    test_model_eval()

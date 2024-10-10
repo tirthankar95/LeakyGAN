@@ -3,8 +3,8 @@ import glob
 from model.utils import recurrent_func
 from datagencode.encode_decode import tensor_to_text
 from datagencode.frmt_dat import create_frmt_data
-from model.train_model import restore_checkpoint, train
-
+from model.train_model import restore_checkpoint, train, eval
+import logging 
 
 
 def get_sentence():
@@ -34,6 +34,7 @@ if __name__ == '__main__':
     # train generator-discriminator on generated data.
     elif args.option == "train":
         train() 
+        logging.debug(f'Avg BLEU score: {eval()}')
     # generate sentence after model is trained.
     elif args.option == "generate":
         get_sentence() 

@@ -54,9 +54,13 @@ def recurrent_func(f_type = "pre"):
     """
     if f_type == "pre":
         def func(model_dict, real_data, use_cuda, temperature = 1.0):
-            # real_data shape: [batch_size, seq_length]
+            '''
+            discriminator is detached.
+            real_data shape: [batch_size, seq_length]
+            '''
             generator = model_dict["generator"]
             discriminator = model_dict["discriminator"]
+            discriminator = discriminator.eval()
             batch_size = generator.worker.batch_size
             seq_len = discriminator.seq_len
             vocab_size = discriminator.vocab_size
@@ -70,7 +74,7 @@ def recurrent_func(f_type = "pre"):
             prediction_list = []
             while t < seq_len:
                 f_t = discriminator(cur_sen)["feature"]
-                f_t = f_t.detach()
+                # f_t = f_t.detach() -> Not requried; discriminator in eval mode.
                 # f_t = nn.init.constant_(torch.zeros(*f_t.shape), 5.0 * 1.1 * t)
                 feature_list.append(f_t)
                 x_t, h_m_t, c_m_t, h_w_t, c_w_t, real_goal, probs, t_ = generator(x_t, f_t, h_m_t, c_m_t, h_w_t, c_w_t, t, temperature)
@@ -93,6 +97,7 @@ def recurrent_func(f_type = "pre"):
                     }
             for result in results.values():
                 if not result.is_contiguous(): result = result.contiguous()
+            discriminator = discriminator.train()
             return results
         return func
  
@@ -100,6 +105,7 @@ def recurrent_func(f_type = "pre"):
         def func(model_dict, use_cuda=False, temperature = 1.0):
             generator = model_dict["generator"]
             discriminator = model_dict["discriminator"]
+            discriminator = discriminator.eval()
             batch_size = generator.worker.batch_size
             seq_len = discriminator.seq_len
             vocab_size = discriminator.vocab_size
@@ -114,7 +120,6 @@ def recurrent_func(f_type = "pre"):
             gen_token_list = []
             while t < seq_len:
                 f_t = discriminator(cur_sen)["feature"]
-                f_t = f_t.detach()
                 feature_list.append(f_t)
                 x_t, h_m_t, c_m_t, h_w_t, c_w_t, real_goal, probs, t_ = generator(x_t, f_t, h_m_t, c_m_t, h_w_t, c_w_t, t, temperature)
                 gen_token_list.append(x_t)
@@ -137,13 +142,20 @@ def recurrent_func(f_type = "pre"):
             }
             for result in results.values():
                 if not result.is_contiguous(): result = result.contiguous()
+            discriminator = discriminator.train()
             return results
         return func
     
     elif f_type == "rollout":
+        '''
+        This function is only used for getting rewards in RL 
+        adversarial training setting, so gen/dis is set to eval mode.
+        '''
         def func(model_dict, input_x, given_num, use_cuda=False, temperature=1.0):
             generator = model_dict["generator"]
+            generator = generator.eval()
             discriminator = model_dict["discriminator"]
+            discriminator = discriminator.eval()
             batch_size = generator.worker.batch_size
             seq_len = discriminator.seq_len
             step_size = generator.step_size
@@ -157,7 +169,6 @@ def recurrent_func(f_type = "pre"):
             gen_token_list = []
             while t < given_num:
                 f_t = discriminator(cur_sen)["feature"]
-                f_t = f_t.detach()	
                 if t % step_size == 0:
                     last_goal = torch.zeros(batch_size, goal_out_size)
                     if use_cuda: last_goal = last_goal.cuda(non_blocking = True)
@@ -182,13 +193,21 @@ def recurrent_func(f_type = "pre"):
                 gen_token_list.append(x_t)
                 t = t_
             gen_token = torch.stack(gen_token_list).permute(1, 0)
+            discriminator = discriminator.train()
+            generator = generator.train()
             return gen_token
         return func
     
     elif f_type == "gen":
+        '''
+        Don't modify generator as this is only used for sampling.
+        Don't modify discriminator as this is only used for sampling.
+        '''
         def func(model_dict, use_cuda=False, temperature=1.0):
             generator = model_dict["generator"]
+            generator = generator.eval()
             discriminator = model_dict["discriminator"]
+            discriminator = discriminator.eval()
             batch_size = generator.worker.batch_size
             seq_len = discriminator.seq_len
             step_size = generator.step_size
@@ -211,6 +230,8 @@ def recurrent_func(f_type = "pre"):
                 if use_cuda: cur_sen = cur_sen.cuda(non_blocking = True)
                 t = t_
             gen_token = torch.stack(gen_token_list).permute(1,0)
+            generator = generator.train()
+            discriminator = discriminator.train()
             return gen_token
         return func
     else:
@@ -234,7 +255,7 @@ def get_rewards(model_dict, input_x, rollout_num, use_cuda=False, temperature=1.
             pred = pred.data 
             if use_cuda: pred = pred.cpu()
             pred = pred.numpy()
-            pred = -1 * pred[:,0] + 1 * pred[:,1]
+            pred = pred[:,1]
             pred = pred.reshape(-1)
             if i == 0: rewards.append(pred)
             else: rewards[given_num] += pred
@@ -288,46 +309,34 @@ def loss_func(f_type="pre_worker"):
             loss = -torch.mean(torch.sum(one_hot(real_data, vocab_size, use_cuda) * torch.log(prediction), dim=2))
             return loss
         return func
-    elif f_type == "pre_manager":
-        def func(real_goal, feature, step_size):
-            # logging.debug(real_goal)
-            feature_size = feature.shape[1] # Get sequence length.
-            delta_feature = [feature[:, tt + step_size] - feature[:, tt] for tt in range(feature_size)\
-                             if tt + step_size < feature_size]
-            delta_feature = torch.stack(delta_feature, dim = 0).permute(1, 0, 2)
-            real_goal = real_goal[:, :(feature_size - step_size)]
-            cosine_similar = torch.abs(F.cosine_similarity(real_goal, delta_feature, dim = 2))
-            loss = torch.mean(cosine_similar)
-            return loss
-        return func
+    # elif f_type == "pre_manager":
+    #     def func(real_goal, feature, step_size):
+    #         # logging.debug(real_goal)
+    #         feature_size = feature.shape[1] # Get sequence length.
+    #         delta_feature = [feature[:, tt + step_size] - feature[:, tt] for tt in range(feature_size)\
+    #                          if tt + step_size < feature_size]
+    #         delta_feature = torch.stack(delta_feature, dim = 0).permute(1, 0, 2)
+    #         real_goal = real_goal[:, :(feature_size - step_size)]
+    #         cosine_similar = torch.abs(F.cosine_similarity(real_goal, delta_feature, dim = 2))
+    #         loss = torch.mean(cosine_similar)
+    #         return loss
+    #     return func
     elif f_type == "adv_worker":
         def func(gen_token, prediction, rewards, vocab_size, use_cuda):
             loss = -torch.mean(rewards * torch.sum(one_hot(gen_token, vocab_size, use_cuda) *  torch.log(prediction), dim=2))
-            # logging.debug(rewards)
             return loss
         return func
-    elif f_type == "adv_manager":
-        def func(rewards, real_goal, feature, step_size):
-            feature_size = feature.shape[1]
-            delta_feature = [feature[:, tt + step_size] - feature[:, tt] for tt in range(feature_size)\
-                             if tt + step_size < feature_size]
-            delta_feature = torch.stack(delta_feature, dim = 0).permute(1, 0, 2)
-            real_goal = real_goal[:, :(feature_size - step_size)]
-            rewards = rewards[:, :(feature_size - step_size)]
-            cosine_similarity = torch.abs(F.cosine_similarity(real_goal, delta_feature, dim=2))
-            loss = torch.mean(rewards * cosine_similarity)
-            return loss
-        return func
-    elif f_type == "dis":
-        def func(discriminator, input_x, score, use_cuda=False):
-            loss_func = nn.CrossEntropyLoss() 
-            if use_cuda:
-                loss_func = loss_func.cuda()
-            input_x = input_x.view(-1) # last dim
-            batch_size, seq_len, vocab_size = score.size()
-            score = score.view(batch_size * seq_len, -1) # reshape
-            loss = loss_func(score, input_x) + discriminator.l2_loss()
-            return loss
-        return func
+    # elif f_type == "adv_manager":
+    #     def func(rewards, real_goal, feature, step_size):
+    #         feature_size = feature.shape[1]
+    #         delta_feature = [feature[:, tt + step_size] - feature[:, tt] for tt in range(feature_size)\
+    #                          if tt + step_size < feature_size]
+    #         delta_feature = torch.stack(delta_feature, dim = 0).permute(1, 0, 2)
+    #         real_goal = real_goal[:, :(feature_size - step_size)]
+    #         rewards = rewards[:, :(feature_size - step_size)]
+    #         cosine_similarity = torch.abs(F.cosine_similarity(real_goal, delta_feature, dim=2))
+    #         loss = torch.mean(rewards * cosine_similarity)
+    #         return loss
+    #     return func
     else:
         raise("Invalid loss function type")
