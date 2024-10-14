@@ -249,11 +249,7 @@ def get_rewards(model_dict, input_x, rollout_num, use_cuda=False, temperature=1.
             given_num += 1
     rewards_type1 = torch.from_numpy(np.array(rewards)) / rollout_num
     rewards_type1 = rewards_type1.permute(1, 0)
-    rewards_type2 = rescale(rewards, delta) / rollout_num
-    # logging.debug(rewards_type1)
-    # logging.debug(rewards_type2)
-    # assert False
-    if use_cuda: rewards = rewards.cuda(non_blocking = True)
+    # rewards_type2 = rescale(rewards, delta) / rollout_num
     return rewards_type1
 
 def rescale(rewards, delta=12.0):
