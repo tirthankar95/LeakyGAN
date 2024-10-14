@@ -362,18 +362,18 @@ def train():
     #Finish pretrain and save the checkpoint
     save_checkpoint(model_dict, optimizer_dict, scheduler_dict, ckpt_num)
     
-    #Adversarial train of D and G
+    # Adversarial train of D and G
     logging.debug ("#########################################################################")
     logging.debug ("Start Adversarial Training...")
     vocab_size = param_dict["leak_gan_params"]["discriminator_params"]["vocab_size"]
-    save_num = param_dict["train_params"]["save_num"] #save checkpoint after this number of repetitions
+    save_num = param_dict["train_params"]["save_num"] # Save checkpoint after this number of repetitions
     replace_num = param_dict["train_params"]["replace_num"]
     dis_train_num = 2 # Reduce time by keeping same Gen sample for 'epoch_pre_disc'
     for epoch in range(1, param_dict["train_params"]["total_epoch"], dis_train_num):
         logging.debug("Epoch: {}/{}  Adv".format(epoch, param_dict["train_params"]["total_epoch"]))
         model_dict, optimizer_dict, scheduler_dict = adversarial_train(model_dict, optimizer_dict, scheduler_dict, dis_data_params, vocab_size=vocab_size, pos_file=pos_file, neg_file=neg_file, \
                                                                        dis_train_num = dis_train_num, batch_size=batch_size, use_cuda=use_cuda)
-        if epoch % save_num == 0:
+        if (epoch-1)//dis_train_num % save_num == 0:
             ckpt_num += 1
             if ckpt_num % replace_num == 0:
                 save_checkpoint(model_dict, optimizer_dict, scheduler_dict, ckpt_num, replace=True)
