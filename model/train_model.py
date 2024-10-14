@@ -73,8 +73,7 @@ def prepare_scheduler_dict(optmizer_dict, step_size=200, gamma=0.99):
 
 # Pretraining the Generator
 def pretrain_generator(model_dict, optimizer_dict, scheduler_dict, dataloader, \
-                       vocab_size, max_norm=5.0, use_cuda = False, epoch = 1, \
-                       tot_epochs=100):
+                       vocab_size, use_cuda = False):
     # get the models of generator
     generator = model_dict["generator"]
     worker = generator.worker
@@ -358,7 +357,7 @@ def train():
     r_dataloader = real_data_loader(**real_data_params)
     for epoch in range(param_dict["train_params"]["pre_gen_epoch_num"]):
         logging.debug("Epoch: {}/{}  Pre-Generator".format(epoch, param_dict["train_params"]["pre_gen_epoch_num"]))
-        model_dict, optimizer_dict, scheduler_dict = pretrain_generator(model_dict, optimizer_dict, scheduler_dict, r_dataloader, vocab_size=vocab_size, use_cuda=use_cuda, epoch=epoch, tot_epochs=range(param_dict["train_params"]["pre_gen_epoch_num"]))
+        model_dict, optimizer_dict, scheduler_dict = pretrain_generator(model_dict, optimizer_dict, scheduler_dict, r_dataloader, vocab_size=vocab_size, use_cuda=use_cuda)
     #Finish pretrain and save the checkpoint
     save_checkpoint(model_dict, optimizer_dict, scheduler_dict, ckpt_num)
     
@@ -384,8 +383,9 @@ def eval(prefix = "./", n_samples = 4) -> float:
     bleu_score, bleu_score_batch = 0.0, 0.0
     pos_file = torch.from_numpy(np.load(prefix + "./formatted_data/positive_corpus.npy"))
     model_dict = restore_checkpoint(prefix)["model_dict"]
+    use_cuda = torch.cuda.is_available()
     for _ in range(n_samples):
-        gen_data = get_sample(model_dict, use_cuda = False, temperature = 1.0)
+        gen_data = get_sample(model_dict, use_cuda = use_cuda, temperature = 1.0)
         bleu_score = Bleu.get_bleu(pos_file, gen_data) # gendata * pos_file bleu's score
         '''
             The sentence generated should match atleast one 
