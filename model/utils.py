@@ -60,7 +60,6 @@ def recurrent_func(f_type = "pre"):
             '''
             generator = model_dict["generator"]
             discriminator = model_dict["discriminator"]
-            discriminator = discriminator.eval()
             batch_size = generator.worker.batch_size
             seq_len = discriminator.seq_len
             vocab_size = discriminator.vocab_size
@@ -97,7 +96,6 @@ def recurrent_func(f_type = "pre"):
                     }
             for result in results.values():
                 if not result.is_contiguous(): result = result.contiguous()
-            discriminator = discriminator.train()
             return results
         return func
  
@@ -105,7 +103,6 @@ def recurrent_func(f_type = "pre"):
         def func(model_dict, use_cuda=False, temperature = 1.0):
             generator = model_dict["generator"]
             discriminator = model_dict["discriminator"]
-            discriminator = discriminator.eval()
             batch_size = generator.worker.batch_size
             seq_len = discriminator.seq_len
             vocab_size = discriminator.vocab_size
@@ -142,7 +139,6 @@ def recurrent_func(f_type = "pre"):
             }
             for result in results.values():
                 if not result.is_contiguous(): result = result.contiguous()
-            discriminator = discriminator.train()
             return results
         return func
     
@@ -153,9 +149,7 @@ def recurrent_func(f_type = "pre"):
         '''
         def func(model_dict, input_x, given_num, use_cuda=False, temperature=1.0):
             generator = model_dict["generator"]
-            generator = generator.eval()
             discriminator = model_dict["discriminator"]
-            discriminator = discriminator.eval()
             batch_size = generator.worker.batch_size
             seq_len = discriminator.seq_len
             step_size = generator.step_size
@@ -193,8 +187,6 @@ def recurrent_func(f_type = "pre"):
                 gen_token_list.append(x_t)
                 t = t_
             gen_token = torch.stack(gen_token_list).permute(1, 0)
-            discriminator = discriminator.train()
-            generator = generator.train()
             return gen_token
         return func
     
@@ -205,9 +197,7 @@ def recurrent_func(f_type = "pre"):
         '''
         def func(model_dict, use_cuda=False, temperature=1.0):
             generator = model_dict["generator"]
-            generator = generator.eval()
             discriminator = model_dict["discriminator"]
-            discriminator = discriminator.eval()
             batch_size = generator.worker.batch_size
             seq_len = discriminator.seq_len
             step_size = generator.step_size
@@ -230,8 +220,6 @@ def recurrent_func(f_type = "pre"):
                 if use_cuda: cur_sen = cur_sen.cuda(non_blocking = True)
                 t = t_
             gen_token = torch.stack(gen_token_list).permute(1,0)
-            generator = generator.train()
-            discriminator = discriminator.train()
             return gen_token
         return func
     else:
@@ -242,7 +230,6 @@ def get_sample(model_dict, use_cuda=False, temperature=1.0):
 
 def get_rewards(model_dict, input_x, rollout_num, use_cuda=False, temperature=1.0, delta=12.0):
     discriminator = model_dict["discriminator"]
-    discriminator = discriminator.eval()
     seq_len = discriminator.seq_len
     rewards = []
     rollout_func = recurrent_func("rollout")
@@ -267,7 +254,6 @@ def get_rewards(model_dict, input_x, rollout_num, use_cuda=False, temperature=1.
     # logging.debug(rewards_type2)
     # assert False
     if use_cuda: rewards = rewards.cuda(non_blocking = True)
-    discriminator = discriminator.train()
     return rewards_type1
 
 def rescale(rewards, delta=12.0):

@@ -4,6 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 from torch.distributions import Categorical
+import logging
 
 # A truncated distribution has its domain (the x-values) restricted to a certain range of values. For example, you might restrict your x-values to between 0 and 100, written in math terminology as {0 > x > 100}. There are several types of truncated distributions:
 def truncated_normal(shape, lower=-0.2, upper=0.2):
@@ -97,6 +98,8 @@ class Generator(nn.Module):
         sub_goal, h_m_tp1, c_m_tp1 = self.manager(f_t, h_m_t, c_m_t)
         output, h_w_tp1, c_w_tp1 = self.worker(x_t, h_w_t, c_w_t)
         sub_goal = F.normalize(sub_goal, dim = 1)
+        logging.debug(f'{sub_goal.device} {self.manager.last_goal.device}')
+        assert False
         sub_goal = sub_goal.to(self.manager.last_goal.device)
         self.manager.last_goal = self.manager.last_goal_wts * self.manager.last_goal + sub_goal
         w_t = torch.matmul(sub_goal, self.worker.goal_change)

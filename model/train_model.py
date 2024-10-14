@@ -132,6 +132,11 @@ def pretrain_generator(model_dict, optimizer_dict, scheduler_dict, dataloader, \
 
 def generate_samples(model_dict, negative_file, batch_size,
                      use_cuda=False, temperature=1.0):
+    # [True|False] ~ [Training Mode| Eval Mode]
+    dis_state, gen_state = model_dict["discriminator"].training, \
+                           model_dict["generator"].training
+    if dis_state: model_dict["discriminator"] = model_dict["discriminator"].eval()
+    if gen_state: model_dict["generator"] = model_dict["generator"].eval()
     neg_data = []
     for _ in range(batch_size):
         sample = get_sample(model_dict, use_cuda, temperature)
@@ -139,6 +144,8 @@ def generate_samples(model_dict, negative_file, batch_size,
         neg_data.append(sample.data.numpy())
     neg_data = np.concatenate(neg_data, axis=0)
     np.save(negative_file, neg_data)
+    if dis_state: model_dict["discriminator"] = model_dict["discriminator"].train()
+    if gen_state: model_dict["generator"] = model_dict["generator"].train()
 
 def pretrain_discriminator(model_dict, optimizer_dict, scheduler_dict,
                            dis_dataloader_params, vocab_size, positive_file,
@@ -192,6 +199,7 @@ def adversarial_train(model_dict, optimizer_dict, scheduler_dict, dis_dataloader
     d_lr_scheduler = scheduler_dict["discriminator"]
     m_loss, w_loss = 0, 0 
     # Adversarial training for generator
+    discriminator = discriminator.eval()
     for _ in range(gen_train_num):
         # Manager.
         # m_optimizer.zero_grad()
@@ -227,6 +235,8 @@ def adversarial_train(model_dict, optimizer_dict, scheduler_dict, dis_dataloader
     del rewards
     
     # Adversarial training for discriminator
+    discriminator = discriminator.train()
+    generator = generator.eval()
     generate_samples(model_dict, neg_file, batch_size, use_cuda, temperature)
     for n in range(dis_train_num):
         dis_dataloader_params["positive_filepath"] = pos_file
@@ -246,7 +256,7 @@ def adversarial_train(model_dict, optimizer_dict, scheduler_dict, dis_dataloader
             d_optimizer.step()
         d_lr_scheduler.step()
         logging.debug("{}/{} Adv-Discriminator Loss: {:.5f}".format(n, dis_train_num, loss))
-    
+    generator = generator.train()
     # Save all changes
     model_dict["discriminator"] = discriminator
     generator.worker = worker
@@ -340,11 +350,15 @@ def train():
     batch_size = param_dict["train_params"]["generated_num"]
     vocab_size = param_dict["leak_gan_params"]["discriminator_params"]["vocab_size"]
     epoch_pre_disc = 10 # Reduce time by keeping same Gen sample for 'epoch_pre_disc' 
+    ## SET GENERATOR
+    model_dict["generator"] = model_dict["generator"].eval()
     for i in range(0, param_dict["train_params"]["pre_dis_epoch_num"], epoch_pre_disc):
         logging.debug("Epoch: {}/{}  Pre-Discriminator".format(i, param_dict["train_params"]["pre_dis_epoch_num"]))
         model_dict, optimizer_dict, scheduler_dict = pretrain_discriminator(model_dict, optimizer_dict, scheduler_dict, dis_data_params, vocab_size = vocab_size, \
                                                                             positive_file = pos_file, negative_file = neg_file, batch_size = batch_size, \
                                                                             epochs = epoch_pre_disc, use_cuda = use_cuda)
+    ## RESET GENERATOR
+    model_dict["generator"] = model_dict["generator"].train()
     save_checkpoint(model_dict, optimizer_dict, scheduler_dict, ckpt_num)
 
     # Pretrain generator 
@@ -355,10 +369,14 @@ def train():
     if use_cuda:
         real_data_params["pin_memory"] = True
     r_dataloader = real_data_loader(**real_data_params)
+    ## SET DISCRIMINATOR
+    model_dict["discriminator"] = model_dict["discriminator"].eval()
     for epoch in range(param_dict["train_params"]["pre_gen_epoch_num"]):
         logging.debug("Epoch: {}/{}  Pre-Generator".format(epoch, param_dict["train_params"]["pre_gen_epoch_num"]))
         model_dict, optimizer_dict, scheduler_dict = pretrain_generator(model_dict, optimizer_dict, scheduler_dict, r_dataloader, vocab_size=vocab_size, use_cuda=use_cuda)
     #Finish pretrain and save the checkpoint
+    ## RESET DISCRIMINATOR
+    model_dict["discriminator"] = model_dict["discriminator"].train()
     save_checkpoint(model_dict, optimizer_dict, scheduler_dict, ckpt_num)
     
     # Adversarial train of D and G
@@ -367,7 +385,7 @@ def train():
     vocab_size = param_dict["leak_gan_params"]["discriminator_params"]["vocab_size"]
     save_num = param_dict["train_params"]["save_num"] # Save checkpoint after this number of repetitions
     replace_num = param_dict["train_params"]["replace_num"]
-    dis_train_num = 2 # Reduce time by keeping same Gen sample for 'epoch_pre_disc'
+    dis_train_num = 2 # Reduce time by keeping same generator sample for 'dis_train_num'
     for epoch in range(1, param_dict["train_params"]["total_epoch"], dis_train_num):
         logging.debug("Epoch: {}/{}  Adv".format(epoch, param_dict["train_params"]["total_epoch"]))
         model_dict, optimizer_dict, scheduler_dict = adversarial_train(model_dict, optimizer_dict, scheduler_dict, dis_data_params, vocab_size=vocab_size, pos_file=pos_file, neg_file=neg_file, \
