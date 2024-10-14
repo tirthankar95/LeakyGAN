@@ -305,6 +305,7 @@ def loss_func(f_type="pre_worker"):
     #     return func
     elif f_type == "adv_worker":
         def func(gen_token, prediction, rewards, vocab_size, use_cuda):
+            rewards = rewards.to(gen_token.device)
             loss = -torch.mean(rewards * torch.sum(one_hot(gen_token, vocab_size, use_cuda) *  torch.log(prediction), dim=2))
             return loss
         return func
