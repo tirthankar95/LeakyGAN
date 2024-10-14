@@ -1,6 +1,7 @@
 import numpy as np
 import traceback
 import pickle
+import logging 
 
 def add_to_vocab(corpus, filePath):
     '''
@@ -11,10 +12,10 @@ def add_to_vocab(corpus, filePath):
     try:
         with open(f"{filePath}/tokens.pkl", "rb") as f:
             vocab = pickle.load(f)
-        reverse_vocab = np.load(f"{filePath}/rvocab.npy")
+        reverse_vocab = np.load(f"{filePath}/rvocab.npy").tolist()
     except Exception as e: 
         traceback.print_exc()
-        print(f'{e}.\n[TM] first creation of files.')
+        logging.error(f'{e}.\n[TM] first creation of files.')
     new_words = ["<R>"] + list(set(corpus.strip().split()))
     indx = len(vocab)
     for word in new_words:

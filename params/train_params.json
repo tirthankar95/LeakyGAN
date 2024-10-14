@@ -1,5 +1,5 @@
 {
-    "lr_dict":{"worker":0.0005,"manager":0.0015,"discriminator":5e-5},
+    "lr_dict":{"worker":0.001,"manager":0.001,"discriminator":5e-5},
     "decay_step_size":200,
     "decay_rate":0.99,
     "total_epoch":50, 

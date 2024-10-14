@@ -102,7 +102,7 @@ class Generator(nn.Module):
         w_t = torch.renorm(w_t, 2, 0, 1.0)
         w_t = torch.unsqueeze(w_t, -1)
         logits = torch.squeeze(torch.matmul(output, w_t))
-        probs = F.softmax(temperature * logits, dim = 1)
+        probs = F.softmax(logits/temperature, dim = 1)
         x_tp1 = Categorical(probs).sample()
         return x_tp1, h_m_tp1, c_m_tp1, h_w_tp1, c_w_tp1, sub_goal, probs, t + 1
     

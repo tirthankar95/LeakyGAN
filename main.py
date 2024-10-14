@@ -29,7 +29,7 @@ if __name__ == '__main__':
                 1. Expand vocab using the new corpus.
                 2. Put data in positive_corpus.
         '''
-        create_frmt_data("./raw_data/small_dataset.csv",\
+        create_frmt_data("./raw_data/physics.csv",\
                          "./formatted_data/positive_corpus.npy")
     # train generator-discriminator on generated data.
     elif args.option == "train":

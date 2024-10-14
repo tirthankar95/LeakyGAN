@@ -174,9 +174,8 @@ def pretrain_discriminator(model_dict, optimizer_dict, scheduler_dict,
 
 #Adversarial training 
 def adversarial_train(model_dict, optimizer_dict, scheduler_dict, dis_dataloader_params,
-                      vocab_size, pos_file, neg_file, batch_size, gen_train_num = 2,
-                      dis_train_epoch = 1, dis_train_num = 1, max_norm = 5.0,
-                      rollout_num = 4, use_cuda = False, temperature = 1.0, epoch = 1, tot_epoch = 100):
+                      vocab_size, pos_file, neg_file, batch_size, gen_train_num = 4,
+                      dis_train_num = 2, rollout_num = 4, use_cuda = False, temperature = 1.0):
     """
         Get all the models, optimizer and schedulers
     """                     
@@ -217,9 +216,7 @@ def adversarial_train(model_dict, optimizer_dict, scheduler_dict, dis_dataloader
         w_loss = loss_func("adv_worker")(gen_token, prediction, rewards, vocab_size, use_cuda)
         w_loss.backward()
         w_optimizer.step()
-
-        if _ % LOG_MOD == 0:
-            logging.debug("Adv-Manager loss: {:.5f} Adv-Worker loss: {:.5f}".format(m_loss, w_loss))
+        logging.debug("Adv-Manager loss: {:.5f} Adv-Worker loss: {:.5f}".format(m_loss, w_loss))
     
     m_lr_scheduler.step()
     w_lr_scheduler.step()
@@ -231,28 +228,25 @@ def adversarial_train(model_dict, optimizer_dict, scheduler_dict, dis_dataloader
     del rewards
     
     # Adversarial training for discriminator
-    for n in range(dis_train_epoch):
-        generate_samples(model_dict, neg_file, batch_size, use_cuda, temperature)
+    generate_samples(model_dict, neg_file, batch_size, use_cuda, temperature)
+    for n in range(dis_train_num):
         dis_dataloader_params["positive_filepath"] = pos_file
         dis_dataloader_params["negative_filepath"] = neg_file
         dataloader = dis_data_loader(**dis_dataloader_params)
-
         cross_entropy = nn.CrossEntropyLoss()
         if use_cuda: cross_entropy = cross_entropy.cuda()
-
-        for _ in range(dis_train_num): 
-            for i, sample in enumerate(dataloader):
-                d_optimizer.zero_grad()
-                data, label = sample["data"], sample["label"]
-                if use_cuda:
-                    data = data.cuda(non_blocking = True)
-                    label = label.cuda(non_blocking = True)
-                outs = discriminator(data)
-                loss = cross_entropy(outs["score"], label.view(-1)) + discriminator.l2_loss()
-                loss.backward()
-                d_optimizer.step()
+        for i, sample in enumerate(dataloader):
+            d_optimizer.zero_grad()
+            data, label = sample["data"], sample["label"]
+            if use_cuda:
+                data = data.cuda(non_blocking = True)
+                label = label.cuda(non_blocking = True)
+            outs = discriminator(data)
+            loss = cross_entropy(outs["score"], label.view(-1)) + discriminator.l2_loss()
+            loss.backward()
+            d_optimizer.step()
         d_lr_scheduler.step()
-        logging.debug("{}/{} Adv-Discriminator Loss: {:.5f}".format(n, range(dis_train_epoch),loss))
+        logging.debug("{}/{} Adv-Discriminator Loss: {:.5f}".format(n, dis_train_num, loss))
     
     # Save all changes
     model_dict["discriminator"] = discriminator
@@ -346,12 +340,15 @@ def train():
     neg_file = dis_data_params["negative_filepath"]
     batch_size = param_dict["train_params"]["generated_num"]
     vocab_size = param_dict["leak_gan_params"]["discriminator_params"]["vocab_size"]
-    for i in range(param_dict["train_params"]["pre_dis_epoch_num"]):
+    epoch_pre_disc = 10 # Reduce time by keeping same Gen sample for 'epoch_pre_disc' 
+    for i in range(0, param_dict["train_params"]["pre_dis_epoch_num"], epoch_pre_disc):
         logging.debug("Epoch: {}/{}  Pre-Discriminator".format(i, param_dict["train_params"]["pre_dis_epoch_num"]))
-        model_dict, optimizer_dict, scheduler_dict = pretrain_discriminator(model_dict, optimizer_dict, scheduler_dict, dis_data_params, vocab_size = vocab_size, positive_file = pos_file, negative_file = neg_file, batch_size = batch_size, epochs = 1, use_cuda = use_cuda)
+        model_dict, optimizer_dict, scheduler_dict = pretrain_discriminator(model_dict, optimizer_dict, scheduler_dict, dis_data_params, vocab_size = vocab_size, \
+                                                                            positive_file = pos_file, negative_file = neg_file, batch_size = batch_size, \
+                                                                            epochs = epoch_pre_disc, use_cuda = use_cuda)
     save_checkpoint(model_dict, optimizer_dict, scheduler_dict, ckpt_num)
 
-    #Pretrain generator 
+    # Pretrain generator 
     logging.debug ("#########################################################################")
     generator = model_dict["generator"]
     logging.debug (f"Start Pretraining Generator... Model Size: {generator.get_model_wts()}")
@@ -371,10 +368,11 @@ def train():
     vocab_size = param_dict["leak_gan_params"]["discriminator_params"]["vocab_size"]
     save_num = param_dict["train_params"]["save_num"] #save checkpoint after this number of repetitions
     replace_num = param_dict["train_params"]["replace_num"]
-
-    for epoch in range(param_dict["train_params"]["total_epoch"]):
+    dis_train_num = 2 # Reduce time by keeping same Gen sample for 'epoch_pre_disc'
+    for epoch in range(1, param_dict["train_params"]["total_epoch"], dis_train_num):
         logging.debug("Epoch: {}/{}  Adv".format(epoch, param_dict["train_params"]["total_epoch"]))
-        model_dict, optimizer_dict, scheduler_dict = adversarial_train(model_dict, optimizer_dict, scheduler_dict, dis_data_params, vocab_size=vocab_size, pos_file=pos_file, neg_file=neg_file, batch_size=batch_size, use_cuda=use_cuda, epoch=epoch, tot_epoch=param_dict["train_params"]["total_epoch"])
+        model_dict, optimizer_dict, scheduler_dict = adversarial_train(model_dict, optimizer_dict, scheduler_dict, dis_data_params, vocab_size=vocab_size, pos_file=pos_file, neg_file=neg_file, \
+                                                                       dis_train_num = dis_train_num, batch_size=batch_size, use_cuda=use_cuda)
         if epoch % save_num == 0:
             ckpt_num += 1
             if ckpt_num % replace_num == 0:

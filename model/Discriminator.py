@@ -3,6 +3,7 @@ from scipy.stats import truncnorm
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
+import logging
 
 #A truncated distribution has its domain (the x-values) restricted to a certain range of values. For example, you might restrict your x-values to between 0 and 100, written in math terminology as {0 > x > 100}. There are several types of truncated distributions:
 def truncated_normal(shape, lower=-0.2, upper=0.2):
@@ -81,9 +82,14 @@ class Discriminator(nn.Module):
         #4. Add highway
         #5. Add dropout. This is when feature should be extracted
         #6. Final unnormalized scores and predictions
-        emb = self.emb(x).unsqueeze(1)
+        
+        # x -> [batch_size, seq_length]
+        emb = self.emb(x).unsqueeze(1) 
+        # emb -> [batch_size, 1, seq_length, emb_dim]
         convs = [F.relu(conv(emb)).squeeze(3) for conv in self.convs] # [batch_size * num_filter * seq_len]
+        # convs -> 12, (batch_size, filter_size[i] * num_filters[i], seq_length - filter_size[i])
         pooled_out = [F.max_pool1d(conv, conv.size(2)).squeeze(2) for conv in convs] # [batch_size * num_filter]
+        # pooled_out -> 12, (batch_size, filter_size[i] * num_filters[i])
         pred = torch.cat(pooled_out, 1) # batch_size * sum(num_filters)
         highway = self.highway(pred)
         highway = torch.sigmoid(highway)* F.relu(highway) + (1.0 - torch.sigmoid(highway))*pred
