@@ -98,9 +98,7 @@ class Generator(nn.Module):
         sub_goal, h_m_tp1, c_m_tp1 = self.manager(f_t, h_m_t, c_m_t)
         output, h_w_tp1, c_w_tp1 = self.worker(x_t, h_w_t, c_w_t)
         sub_goal = F.normalize(sub_goal, dim = 1)
-        logging.debug(f'{sub_goal.device} {self.manager.last_goal.device}')
-        assert False
-        sub_goal = sub_goal.to(self.manager.last_goal.device)
+        self.manager.last_goal = self.manager.last_goal.to(sub_goal.device)
         self.manager.last_goal = self.manager.last_goal_wts * self.manager.last_goal + sub_goal
         w_t = torch.matmul(sub_goal, self.worker.goal_change)
         w_t = torch.renorm(w_t, 2, 0, 1.0)
