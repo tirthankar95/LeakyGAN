@@ -16,6 +16,12 @@ from data_iter import Real_Dataset
 from datagencode.encode_decode import tensor_to_text
 import pickle as pkl
 from model.utils import get_rewards
+import pandas as pd
+
+def test_getLength():
+    df = pd.read_csv("../raw_data/physics.csv")
+    df['length'] = df['Questions'].apply(lambda x: len(x.split(' ')))
+    logging.debug(df["length"].describe())
 
 def test_model_eval():
     samples, bleu_score = 100, []
@@ -32,8 +38,8 @@ def test_get_rewards():
     data_loader = DataLoader(positive_dataset, batch_size = 4, shuffle = True)
     batch_size, res = 4, None
     for sample in data_loader:
-        res = get_rewards(model_dict, sample, rollout_num = 4, \
-                        use_cuda = False, temperature = 1.0, delta = 12.0)
+        res = get_rewards(model_dict, sample, use_cuda = False, \
+                          temperature = 1.0, delta = 12.0)
         break
     logging.debug(f'---- +ve Examples -----') 
     logging.debug(f'{res.mean(axis  = 0)}')
@@ -42,8 +48,8 @@ def test_get_rewards():
     data_loader = DataLoader(negative_dataset, batch_size = 4, shuffle = True)
     batch_size, res = 4, None
     for sample in data_loader:
-        res = get_rewards(model_dict, sample, rollout_num = 4, \
-                        use_cuda = False, temperature = 1.0, delta = 12.0)
+        res = get_rewards(model_dict, sample, use_cuda = False, \
+                          temperature = 1.0, delta = 12.0)
         break
     logging.debug(f'---- -ve Examples -----') 
     logging.debug(f'{res.mean(axis  = 0)}')
@@ -101,5 +107,6 @@ if __name__ == '__main__':
     # test_vocab()
     # test_positive_examples()
     test_discriminator(True, True)
-    # test_get_rewards()
-    test_model_eval()
+    test_get_rewards()
+    # test_model_eval()
+    # test_getLength()

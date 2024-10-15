@@ -23,3 +23,10 @@ Main source:
 2. https://github.com/deep-art-project/Music/blob/master/leak_gan/
 
 Copyright (c) 2024 Tirthankar Mittra
+
+---
+
+TBD
+1. Neuro Fuzzy membership.
+2. Code sampling.
+3. Add more data.

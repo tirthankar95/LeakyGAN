@@ -94,15 +94,6 @@ def pretrain_generator(model_dict, optimizer_dict, scheduler_dict, dataloader, \
         batch_size, seq_length = param["generator_params"]["manager_params"]["batch_size"],\
                                  param["discriminator_params"]["seq_len"]
         if (sample.size() == torch.Size([batch_size, seq_length])): #sometimes smaller than 64 (16) is passed, so this if statement disables it
-            # Manager
-            # m_optimizer.zero_grad()
-            # pre_rets = recurrent_func("pre")(model_dict, sample, use_cuda)
-            # real_goal = pre_rets["real_goal"].squeeze()
-            # prediction = pre_rets["prediction"].squeeze()
-            # features = pre_rets["feature_list"].squeeze()
-            # m_loss = loss_func("pre_manager")(real_goal, features, generator.step_size)
-            # m_loss.backward()
-            # m_optimizer.step()
             '''
             Graph is released after m_optimizer.step() 
             so it's calculated again.
@@ -181,7 +172,7 @@ def pretrain_discriminator(model_dict, optimizer_dict, scheduler_dict,
 #Adversarial training 
 def adversarial_train(model_dict, optimizer_dict, scheduler_dict, dis_dataloader_params,
                       vocab_size, pos_file, neg_file, batch_size, gen_train_num = 4,
-                      dis_train_num = 2, rollout_num = 4, use_cuda = False, temperature = 1.0):
+                      dis_train_num = 2, use_cuda = False, temperature = 1.0):
     """
         Get all the models, optimizer and schedulers
     """                     
@@ -201,25 +192,13 @@ def adversarial_train(model_dict, optimizer_dict, scheduler_dict, dis_dataloader
     # Adversarial training for generator
     discriminator = discriminator.eval()
     for _ in range(gen_train_num):
-        # Manager.
-        # m_optimizer.zero_grad()
-        # adv_rets = recurrent_func("adv")(model_dict, use_cuda)
-        # real_goal = adv_rets["real_goal"]
-        # prediction = adv_rets["prediction"]
-        # features = adv_rets["feature_list"]
-        # gen_token = adv_rets["gen_token"]
-        # rewards = get_rewards(model_dict, gen_token, rollout_num, use_cuda)
-        # m_loss = loss_func("adv_manager")(rewards, real_goal, features, generator.step_size)
-        # m_loss.backward()
-        # m_optimizer.step()
-        
         # Worker.
         w_optimizer.zero_grad()
         adv_rets = recurrent_func("adv")(model_dict, use_cuda)
         real_goal = adv_rets["real_goal"]
         prediction = adv_rets["prediction"]
         gen_token = adv_rets["gen_token"]
-        rewards = get_rewards(model_dict, gen_token, rollout_num, use_cuda)
+        rewards = get_rewards(model_dict, gen_token, use_cuda)
         w_loss = loss_func("adv_worker")(gen_token, prediction, rewards, vocab_size, use_cuda)
         w_loss.backward()
         w_optimizer.step()

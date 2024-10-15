@@ -107,14 +107,10 @@ def recurrent_func(f_type = "pre"):
             seq_len = discriminator.seq_len
             vocab_size = discriminator.vocab_size
             h_w_t, c_w_t, h_m_t, c_m_t, x_t = init_vars(generator, discriminator, use_cuda)
-            
             t = 0
             cur_sen = nn.init.constant_(torch.zeros(batch_size, seq_len), vocab_size).long()
             if use_cuda: cur_sen = cur_sen.cuda(non_blocking = True)
-            feature_list = []
-            prediction_list = []
-            real_goal_list = []
-            gen_token_list = []
+            feature_list, prediction_list, real_goal_list, gen_token_list = [], [], [], []
             while t < seq_len:
                 f_t = discriminator(cur_sen)["feature"]
                 feature_list.append(f_t)
@@ -141,55 +137,7 @@ def recurrent_func(f_type = "pre"):
                 if not result.is_contiguous(): result = result.contiguous()
             return results
         return func
-    
-    elif f_type == "rollout":
-        '''
-        This function is only used for getting rewards in RL 
-        adversarial training setting, so gen/dis is set to eval mode.
-        '''
-        def func(model_dict, input_x, given_num, use_cuda=False, temperature=1.0):
-            generator = model_dict["generator"]
-            discriminator = model_dict["discriminator"]
-            batch_size = generator.worker.batch_size
-            seq_len = discriminator.seq_len
-            step_size = generator.step_size
-            goal_out_size = generator.worker.goal_out_size
-            vocab_size = discriminator.vocab_size
-            h_w_t, c_w_t, h_m_t, c_m_t, x_t = init_vars(generator, discriminator, use_cuda)
-            
-            t = 0
-            cur_sen = nn.init.constant_(torch.zeros(batch_size, seq_len), vocab_size).long()
-            if use_cuda: cur_sen = cur_sen.cuda(non_blocking = True)
-            gen_token_list = []
-            while t < given_num:
-                f_t = discriminator(cur_sen)["feature"]
-                if t % step_size == 0:
-                    last_goal = torch.zeros(batch_size, goal_out_size)
-                    if use_cuda: last_goal = last_goal.cuda(non_blocking = True)
-                _, h_m_t, c_m_t, h_w_t, c_w_t, real_goal, probs, t_ = generator(x_t, f_t, h_m_t, c_m_t, h_w_t, c_w_t, t, temperature)
-                x_t = input_x[:, t].contiguous()
-                gen_token_list.append(x_t)
-                cur_sen = torch.stack(gen_token_list).permute(1,0)
-                cur_sen = F.pad(cur_sen, (0, seq_len - t), value=vocab_size)
-                t = t_
-                
-            # Perform Rollout, after following sequence upto time 't' in the above while-loop.
-            while t < seq_len:
-                if len(gen_token_list) != 0:
-                    cur_sen = torch.stack(gen_token_list).permute(1,0)
-                    cur_sen = F.pad(cur_sen, (0, seq_len - t), value=vocab_size)
-                f_t = discriminator(cur_sen)["feature"]
-                # Generator forward step
-                if t % step_size == 0:
-                    last_goal = torch.zeros(batch_size, goal_out_size)
-                    if use_cuda: last_goal = last_goal.cuda(non_blocking = True)
-                x_t, h_m_t, c_m_t, h_w_t, c_w_t, real_goal, probs, t_ = generator(x_t, f_t, h_m_t, c_m_t, h_w_t, c_w_t, t, temperature)
-                gen_token_list.append(x_t)
-                t = t_
-            gen_token = torch.stack(gen_token_list).permute(1, 0)
-            return gen_token
-        return func
-    
+        
     elif f_type == "gen":
         '''
         Don't modify generator as this is only used for sampling.
@@ -200,8 +148,6 @@ def recurrent_func(f_type = "pre"):
             discriminator = model_dict["discriminator"]
             batch_size = generator.worker.batch_size
             seq_len = discriminator.seq_len
-            step_size = generator.step_size
-            goal_out_size = generator.worker.goal_out_size
             vocab_size = discriminator.vocab_size
             h_w_t, c_w_t, h_m_t, c_m_t, x_t = init_vars(generator, discriminator, use_cuda)
             t = 0
@@ -210,9 +156,6 @@ def recurrent_func(f_type = "pre"):
             gen_token_list = []
             while t < seq_len:
                 f_t = discriminator(cur_sen)["feature"]
-                if t % step_size == 0:
-                    last_goal = torch.zeros(batch_size, goal_out_size)
-                    if use_cuda: last_goal = last_goal.cuda(non_blocking = True)
                 x_t, h_m_t, c_m_t, h_w_t, c_w_t, real_goal, probs, t_ = generator(x_t, f_t, h_m_t, c_m_t, h_w_t, c_w_t, t, temperature)
                 gen_token_list.append(x_t)
                 cur_sen = torch.stack(gen_token_list).permute(1, 0)
@@ -228,28 +171,11 @@ def recurrent_func(f_type = "pre"):
 def get_sample(model_dict, use_cuda=False, temperature=1.0):
     return recurrent_func("gen")(model_dict, use_cuda, temperature)
 
-def get_rewards(model_dict, input_x, rollout_num, use_cuda=False, temperature=1.0, delta=12.0):
+def get_rewards(model_dict, input_x, use_cuda=False, temperature=1.0, delta=12.0):
     discriminator = model_dict["discriminator"]
-    seq_len = discriminator.seq_len
-    rewards = []
-    rollout_func = recurrent_func("rollout")
-    for i in range(rollout_num):
-        given_num = 0
-        while given_num < seq_len:
-            sample_for_reward = rollout_func(model_dict, input_x, given_num, use_cuda, temperature)
-            pred = discriminator(sample_for_reward)["pred"]
-            pred = F.softmax(pred, dim = 1)
-            pred = pred.data 
-            if use_cuda: pred = pred.cpu()
-            pred = pred.numpy()
-            pred = pred[:,1]
-            pred = pred.reshape(-1)
-            if i == 0: rewards.append(pred)
-            else: rewards[given_num] += pred
-            given_num += 1
-    rewards_type1 = torch.from_numpy(np.array(rewards)) / rollout_num
-    rewards_type1 = rewards_type1.permute(1, 0)
-    # rewards_type2 = rescale(rewards, delta) / rollout_num
+    pred = discriminator(input_x)["pred"]
+    rewards_type1 = F.softmax(pred, dim = 1)[:,:1]
+    # rewards_type2 = rescale(pred[:,:1], delta) / rollout_num
     return rewards_type1
 
 def rescale(rewards, delta=12.0):
@@ -291,35 +217,12 @@ def loss_func(f_type="pre_worker"):
             loss = -torch.mean(torch.sum(one_hot(real_data, vocab_size, use_cuda) * torch.log(prediction), dim=2))
             return loss
         return func
-    # elif f_type == "pre_manager":
-    #     def func(real_goal, feature, step_size):
-    #         # logging.debug(real_goal)
-    #         feature_size = feature.shape[1] # Get sequence length.
-    #         delta_feature = [feature[:, tt + step_size] - feature[:, tt] for tt in range(feature_size)\
-    #                          if tt + step_size < feature_size]
-    #         delta_feature = torch.stack(delta_feature, dim = 0).permute(1, 0, 2)
-    #         real_goal = real_goal[:, :(feature_size - step_size)]
-    #         cosine_similar = torch.abs(F.cosine_similarity(real_goal, delta_feature, dim = 2))
-    #         loss = torch.mean(cosine_similar)
-    #         return loss
-    #     return func
     elif f_type == "adv_worker":
         def func(gen_token, prediction, rewards, vocab_size, use_cuda):
             rewards = rewards.to(gen_token.device)
-            loss = -torch.mean(rewards * torch.sum(one_hot(gen_token, vocab_size, use_cuda) *  torch.log(prediction), dim=2))
+            log_loss = -torch.sum(one_hot(gen_token, vocab_size, use_cuda) *  torch.log(prediction), dim=2)
+            loss = torch.mean(rewards * log_loss)
             return loss
         return func
-    # elif f_type == "adv_manager":
-    #     def func(rewards, real_goal, feature, step_size):
-    #         feature_size = feature.shape[1]
-    #         delta_feature = [feature[:, tt + step_size] - feature[:, tt] for tt in range(feature_size)\
-    #                          if tt + step_size < feature_size]
-    #         delta_feature = torch.stack(delta_feature, dim = 0).permute(1, 0, 2)
-    #         real_goal = real_goal[:, :(feature_size - step_size)]
-    #         rewards = rewards[:, :(feature_size - step_size)]
-    #         cosine_similarity = torch.abs(F.cosine_similarity(real_goal, delta_feature, dim=2))
-    #         loss = torch.mean(rewards * cosine_similarity)
-    #         return loss
-    #     return func
     else:
         raise("Invalid loss function type")
