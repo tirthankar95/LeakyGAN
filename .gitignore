@@ -1,0 +1,6 @@
+saved_models/
+formatted_data/
+test/
+!test/*.py
+!test/*.ipynb
+**/__pycache__/
