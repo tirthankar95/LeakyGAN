@@ -1,4 +1,5 @@
 saved_models/
+!saved_models/*.md
 formatted_data/
 test/
 !test/*.py
