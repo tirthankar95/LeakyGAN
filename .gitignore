@@ -1,7 +1,9 @@
 saved_models/
 !saved_models/*.md
 formatted_data/
+!formatted_data/*.md
 test/
 !test/*.py
 !test/*.ipynb
 **/__pycache__/
+.gitignore

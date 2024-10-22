@@ -73,7 +73,7 @@ def recurrent_func(f_type = "pre"):
             prediction_list = []
             while t < seq_len:
                 f_t = discriminator(cur_sen)["feature"]
-                # f_t = f_t.detach() -> Not requried; discriminator in eval mode.
+                f_t = f_t.detach()
                 # f_t = nn.init.constant_(torch.zeros(*f_t.shape), 5.0 * 1.1 * t)
                 feature_list.append(f_t)
                 x_t, h_m_t, c_m_t, h_w_t, c_w_t, real_goal, probs, t_ = generator(x_t, f_t, h_m_t, c_m_t, h_w_t, c_w_t, t, temperature)
@@ -98,7 +98,6 @@ def recurrent_func(f_type = "pre"):
                 if not result.is_contiguous(): result = result.contiguous()
             return results
         return func
- 
     elif f_type == "adv":
         def func(model_dict, use_cuda=False, temperature = 1.0):
             generator = model_dict["generator"]
@@ -113,6 +112,7 @@ def recurrent_func(f_type = "pre"):
             feature_list, prediction_list, real_goal_list, gen_token_list = [], [], [], []
             while t < seq_len:
                 f_t = discriminator(cur_sen)["feature"]
+                f_t = f_t.detach()
                 feature_list.append(f_t)
                 x_t, h_m_t, c_m_t, h_w_t, c_w_t, real_goal, probs, t_ = generator(x_t, f_t, h_m_t, c_m_t, h_w_t, c_w_t, t, temperature)
                 gen_token_list.append(x_t)
@@ -136,34 +136,34 @@ def recurrent_func(f_type = "pre"):
             for result in results.values():
                 if not result.is_contiguous(): result = result.contiguous()
             return results
-        return func
-        
+        return func        
     elif f_type == "gen":
         '''
         Don't modify generator as this is only used for sampling.
         Don't modify discriminator as this is only used for sampling.
         '''
         def func(model_dict, use_cuda=False, temperature=1.0):
-            generator = model_dict["generator"]
-            discriminator = model_dict["discriminator"]
-            batch_size = generator.worker.batch_size
-            seq_len = discriminator.seq_len
-            vocab_size = discriminator.vocab_size
-            h_w_t, c_w_t, h_m_t, c_m_t, x_t = init_vars(generator, discriminator, use_cuda)
-            t = 0
-            cur_sen = nn.init.constant_(torch.zeros(batch_size, seq_len), vocab_size).long()
-            if use_cuda: cur_sen = cur_sen.cuda(non_blocking = True)
-            gen_token_list = []
-            while t < seq_len:
-                f_t = discriminator(cur_sen)["feature"]
-                x_t, h_m_t, c_m_t, h_w_t, c_w_t, real_goal, probs, t_ = generator(x_t, f_t, h_m_t, c_m_t, h_w_t, c_w_t, t, temperature)
-                gen_token_list.append(x_t)
-                cur_sen = torch.stack(gen_token_list).permute(1, 0)
-                cur_sen = F.pad(cur_sen, (0, seq_len - t), value=vocab_size)
+            with torch.no_grad():
+                generator = model_dict["generator"]
+                discriminator = model_dict["discriminator"]
+                batch_size = generator.worker.batch_size
+                seq_len = discriminator.seq_len
+                vocab_size = discriminator.vocab_size
+                h_w_t, c_w_t, h_m_t, c_m_t, x_t = init_vars(generator, discriminator, use_cuda)
+                t = 0
+                cur_sen = nn.init.constant_(torch.zeros(batch_size, seq_len), vocab_size).long()
                 if use_cuda: cur_sen = cur_sen.cuda(non_blocking = True)
-                t = t_
-            gen_token = torch.stack(gen_token_list).permute(1,0)
-            return gen_token
+                gen_token_list = []
+                while t < seq_len:
+                    f_t = discriminator(cur_sen)["feature"]
+                    x_t, h_m_t, c_m_t, h_w_t, c_w_t, real_goal, probs, t_ = generator(x_t, f_t, h_m_t, c_m_t, h_w_t, c_w_t, t, temperature)
+                    gen_token_list.append(x_t)
+                    cur_sen = torch.stack(gen_token_list).permute(1, 0)
+                    cur_sen = F.pad(cur_sen, (0, seq_len - t), value=vocab_size)
+                    if use_cuda: cur_sen = cur_sen.cuda(non_blocking = True)
+                    t = t_
+                gen_token = torch.stack(gen_token_list).permute(1,0)
+                return gen_token
         return func
     else:
         raise("Invalid funnction type")
@@ -174,7 +174,7 @@ def get_sample(model_dict, use_cuda=False, temperature=1.0):
 def get_rewards(model_dict, input_x, use_cuda=False, temperature=1.0, delta=12.0):
     discriminator = model_dict["discriminator"]
     pred = discriminator(input_x)["pred"]
-    rewards_type1 = F.softmax(pred, dim = 1)[:,:1]
+    rewards_type1 = F.softmax(pred, dim = 1)[:,1]
     # rewards_type2 = rescale(pred[:,:1], delta) / rollout_num
     return rewards_type1
 
@@ -213,7 +213,6 @@ def loss_func(f_type="pre_worker"):
     """
     if f_type == "pre_worker":
         def func(real_data, prediction, vocab_size, use_cuda):
-            # logging.debug(prediction)
             loss = -torch.mean(torch.sum(one_hot(real_data, vocab_size, use_cuda) * torch.log(prediction), dim=2))
             return loss
         return func
@@ -221,6 +220,7 @@ def loss_func(f_type="pre_worker"):
         def func(gen_token, prediction, rewards, vocab_size, use_cuda):
             rewards = rewards.to(gen_token.device)
             log_loss = -torch.sum(one_hot(gen_token, vocab_size, use_cuda) *  torch.log(prediction), dim=2)
+            rewards = rewards.unsqueeze(1)
             loss = torch.mean(rewards * log_loss)
             return loss
         return func

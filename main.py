@@ -2,7 +2,8 @@ import argparse
 import glob
 from model.utils import recurrent_func
 from datagencode.encode_decode import tensor_to_text
-from datagencode.frmt_dat import create_frmt_data
+from datagencode.frmt_dat import create_frmt_data 
+from datagencode.novelty import re_score
 from model.train_model import restore_checkpoint, train, eval
 import logging 
 
@@ -18,7 +19,8 @@ def get_sentence():
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument("--option", type = str, help = "Available:[crawl, datagen, train, generate]" )
+    parser.add_argument("--option", type = str, help = "Available:[crawl, datagen, rescore, train, generate]" )
+    parser.add_argument("--type", type = str, help = "Available:[rescore -> [restart]]" )
     args = parser.parse_args()
     if args.option == "crawl":
         print(f'tbd... coming soon.')
@@ -32,6 +34,9 @@ if __name__ == '__main__':
         create_frmt_data("./raw_data/physics.csv",\
                          "./formatted_data/positive_corpus.npy")
     # train generator-discriminator on generated data.
+    elif args.option == "rescore":
+        restart = True if args.type == "restart" else False 
+        re_score(filename = "./raw_data/physics.csv", restart = restart)
     elif args.option == "train":
         train() 
         logging.debug(f'Avg BLEU score: {eval()}')

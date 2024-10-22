@@ -1,5 +1,6 @@
 import pickle as pkl
 import numpy as np
+import pandas as pd 
 import json 
 import glob
 import logging
@@ -121,15 +122,15 @@ def pretrain_generator(model_dict, optimizer_dict, scheduler_dict, dataloader, \
     scheduler_dict["worker"] = w_lr_scheduler
     return model_dict, optimizer_dict, scheduler_dict
 
-def generate_samples(model_dict, negative_file, batch_size,
-                     use_cuda=False, temperature=1.0):
+def generate_samples(model_dict, negative_file, batch_size, use_cuda=False, temperature=1.0):
     # [True|False] ~ [Training Mode| Eval Mode]
+    global pos_size
     dis_state, gen_state = model_dict["discriminator"].training, \
                            model_dict["generator"].training
     if dis_state: model_dict["discriminator"] = model_dict["discriminator"].eval()
     if gen_state: model_dict["generator"] = model_dict["generator"].eval()
     neg_data = []
-    for _ in range(batch_size):
+    for _ in range(0, pos_size, batch_size):
         sample = get_sample(model_dict, use_cuda, temperature)
         sample = sample.cpu()
         neg_data.append(sample.data.numpy())
@@ -147,6 +148,7 @@ def pretrain_discriminator(model_dict, optimizer_dict, scheduler_dict,
     generate_samples(model_dict, negative_file, batch_size, use_cuda, temperature)
     dis_dataloader_params["positive_filepath"] = positive_file
     dis_dataloader_params["negative_filepath"] = negative_file
+    
     dataloader = dis_data_loader(**dis_dataloader_params) # this is where data iterator is used
     cross_entropy = nn.CrossEntropyLoss() # this one is similar to NLL (negative log likelihood)
     if use_cuda: cross_entropy = cross_entropy.cuda()
@@ -294,8 +296,10 @@ def restore_checkpoint(prefix = "./", ckpt_path = None):
         return None
     return checkpoint
 
+pos_size = None 
 def train():
-    global param_dict
+    global param_dict, pos_size
+    pos_size = pd.read_csv("raw_data/physics.csv").shape[0]
     param_dict = get_arguments()
     use_cuda = torch.cuda.is_available()
     #Random seed
@@ -321,8 +325,7 @@ def train():
     logging.debug (f"Start Pretraining Discriminator... Model Size: {discriminator.get_model_wts()}")
     with open("./params/dis_data_params.json", 'r') as f:
         dis_data_params = json.load(f)
-    if use_cuda:
-        dis_data_params["pin_memory"] = True
+    if use_cuda: dis_data_params["pin_memory"] = True
     f.close()
     pos_file = dis_data_params["positive_filepath"]
     neg_file = dis_data_params["negative_filepath"]
