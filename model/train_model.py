@@ -109,7 +109,7 @@ def pretrain_generator(model_dict, optimizer_dict, scheduler_dict, dataloader, \
             m_lr_scheduler.step()
             w_lr_scheduler.step()
             if i % LOG_MOD == 0:
-                logging.debug("Pre-Manager Loss: {:.5f}, Pre-Worker Loss: {:.5f}\n".format(m_loss, w_loss))
+                logging.warning("Pre-Manager Loss: {:.5f}, Pre-Worker Loss: {:.5f}\n".format(m_loss, w_loss))
     """
     Update model_dict, optimizer_dict, and scheduler_dict
     """
@@ -164,7 +164,7 @@ def pretrain_discriminator(model_dict, optimizer_dict, scheduler_dict,
             loss.backward()
             d_optimizer.step()
             if i % LOG_MOD == 0:
-                logging.debug("Pre-Discriminator loss: {:.5f}".format(loss))
+                logging.warning("Pre-Discriminator loss: {:.5f}".format(loss))
         d_lr_scheduler.step()
     model_dict["discriminator"] = discriminator
     optimizer_dict["discriminator"] = d_optimizer
@@ -204,7 +204,7 @@ def adversarial_train(model_dict, optimizer_dict, scheduler_dict, dis_dataloader
         w_loss = loss_func("adv_worker")(gen_token, prediction, rewards, vocab_size, use_cuda)
         w_loss.backward()
         w_optimizer.step()
-        logging.debug("Adv-Manager loss: {:.5f} Adv-Worker loss: {:.5f}".format(m_loss, w_loss))
+        logging.warning("Adv-Manager loss: {:.5f} Adv-Worker loss: {:.5f}".format(m_loss, w_loss))
     
     m_lr_scheduler.step()
     w_lr_scheduler.step()
@@ -236,7 +236,7 @@ def adversarial_train(model_dict, optimizer_dict, scheduler_dict, dis_dataloader
             loss.backward()
             d_optimizer.step()
         d_lr_scheduler.step()
-        logging.debug("{}/{} Adv-Discriminator Loss: {:.5f}".format(n, dis_train_num, loss))
+        logging.warning("{}/{} Adv-Discriminator Loss: {:.5f}".format(n, dis_train_num, loss))
     generator = generator.train()
     # Save all changes
     model_dict["discriminator"] = discriminator
@@ -292,7 +292,7 @@ def restore_checkpoint(prefix = "./", ckpt_path = None):
         combined_path = prefix + ckpt_path
         checkpoint = torch.load(combined_path, weights_only = False)
     except:
-        logging.debug("[TM] No models are there to load.")
+        logging.warning("[TM] No models are there to load.")
         return None
     return checkpoint
 
@@ -320,9 +320,9 @@ def train():
         scheduler_dict = checkpoint["scheduler_dict"]
         ckpt_num = checkpoint["ckpt_num"]
     #Pretrain discriminator
-    logging.debug ("#########################################################################")
+    logging.warning ("#########################################################################")
     discriminator = model_dict["discriminator"]
-    logging.debug (f"Start Pretraining Discriminator... Model Size: {discriminator.get_model_wts()}")
+    logging.warning (f"Start Pretraining Discriminator... Model Size: {discriminator.get_model_wts()}")
     with open("./params/dis_data_params.json", 'r') as f:
         dis_data_params = json.load(f)
     if use_cuda: dis_data_params["pin_memory"] = True
@@ -335,7 +335,7 @@ def train():
     ## SET GENERATOR
     model_dict["generator"] = model_dict["generator"].eval()
     for i in range(0, param_dict["train_params"]["pre_dis_epoch_num"], epoch_pre_disc):
-        logging.debug("Epoch: {}/{}  Pre-Discriminator".format(i, param_dict["train_params"]["pre_dis_epoch_num"]))
+        logging.warning("Epoch: {}/{}  Pre-Discriminator".format(i, param_dict["train_params"]["pre_dis_epoch_num"]))
         model_dict, optimizer_dict, scheduler_dict = pretrain_discriminator(model_dict, optimizer_dict, scheduler_dict, dis_data_params, vocab_size = vocab_size, \
                                                                             positive_file = pos_file, negative_file = neg_file, batch_size = batch_size, \
                                                                             epochs = epoch_pre_disc, use_cuda = use_cuda)
@@ -344,9 +344,9 @@ def train():
     save_checkpoint(model_dict, optimizer_dict, scheduler_dict, ckpt_num)
 
     # Pretrain generator 
-    logging.debug ("#########################################################################")
+    logging.warning ("#########################################################################")
     generator = model_dict["generator"]
-    logging.debug (f"Start Pretraining Generator... Model Size: {generator.get_model_wts()}")
+    logging.warning (f"Start Pretraining Generator... Model Size: {generator.get_model_wts()}")
     real_data_params = param_dict["real_data_params"]
     if use_cuda:
         real_data_params["pin_memory"] = True
@@ -354,7 +354,7 @@ def train():
     ## SET DISCRIMINATOR
     model_dict["discriminator"] = model_dict["discriminator"].eval()
     for epoch in range(param_dict["train_params"]["pre_gen_epoch_num"]):
-        logging.debug("Epoch: {}/{}  Pre-Generator".format(epoch, param_dict["train_params"]["pre_gen_epoch_num"]))
+        logging.warning("Epoch: {}/{}  Pre-Generator".format(epoch, param_dict["train_params"]["pre_gen_epoch_num"]))
         model_dict, optimizer_dict, scheduler_dict = pretrain_generator(model_dict, optimizer_dict, scheduler_dict, r_dataloader, vocab_size=vocab_size, use_cuda=use_cuda)
     #Finish pretrain and save the checkpoint
     ## RESET DISCRIMINATOR
@@ -362,14 +362,14 @@ def train():
     save_checkpoint(model_dict, optimizer_dict, scheduler_dict, ckpt_num)
     
     # Adversarial train of D and G
-    logging.debug ("#########################################################################")
-    logging.debug ("Start Adversarial Training...")
+    logging.warning ("#########################################################################")
+    logging.warning ("Start Adversarial Training...")
     vocab_size = param_dict["leak_gan_params"]["discriminator_params"]["vocab_size"]
     save_num = param_dict["train_params"]["save_num"] # Save checkpoint after this number of repetitions
     replace_num = param_dict["train_params"]["replace_num"]
     dis_train_num = 2 # Reduce time by keeping same generator sample for 'dis_train_num'
     for epoch in range(1, param_dict["train_params"]["total_epoch"], dis_train_num):
-        logging.debug("Epoch: {}/{}  Adv".format(epoch, param_dict["train_params"]["total_epoch"]))
+        logging.warning("Epoch: {}/{}  Adv".format(epoch, param_dict["train_params"]["total_epoch"]))
         model_dict, optimizer_dict, scheduler_dict = adversarial_train(model_dict, optimizer_dict, scheduler_dict, dis_data_params, vocab_size=vocab_size, pos_file=pos_file, neg_file=neg_file, \
                                                                        dis_train_num = dis_train_num, batch_size=batch_size, use_cuda=use_cuda)
         if (epoch-1)//dis_train_num % save_num == 0:

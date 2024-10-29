@@ -55,7 +55,7 @@ def re_score(filename = None, restart = False):
         for cname, cvalue in class_score:
             part1 += cvalue * df.loc[idx, f'{cname}']/df.loc[idx, 'low':'high'].sum()
         part2 = 0
-        if df.loc[idx, 'alpha'] < 1: # You can use group-by to make it faster.
+        if False and df.loc[idx, 'alpha'] < 1: # You can use group-by to make it faster.
             for jdx in df.index:
                 if idx == jdx: continue 
                 part2 += df.loc[jdx, 'alpha'] * \

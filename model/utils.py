@@ -8,10 +8,7 @@ from torch.nn import CrossEntropyLoss
 import json
 import time
 import logging 
-logging.basicConfig(
-    level=logging.DEBUG, 
-    format='%(asctime)s - %(filename)s - Line: %(lineno)d - %(message)s',  
-)
+
 
 def get_arguments():
     def get_params(filePath):

@@ -28,7 +28,7 @@ def create_frmt_data(filePath, pf):
         df.loc[idx, "Questions"] = " ".join(new_text_arr)
         total_sentence.extend(new_text_arr)
     vocab, rev_vocab = add_to_vocab(" ".join(total_sentence), "./formatted_data/")
-    logging.debug(f'[TM] vocab size: {len(rev_vocab)}')
+    logging.warning(f'[TM] vocab size: {len(rev_vocab)}')
     positive, negative = [], []
     seq_length = param_dict["leak_gan_params"]\
                            ["discriminator_params"]\
